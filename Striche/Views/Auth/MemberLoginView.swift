@@ -1,0 +1,175 @@
+import SwiftUI
+
+struct MemberLoginView: View {
+    @EnvironmentObject var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+
+    enum Mode { case login, register }
+    @State private var mode: Mode = .login
+    @State private var name = ""
+    @State private var email = ""
+    @State private var password = ""
+    @State private var showHint = false
+    @State private var hintText = ""
+    @State private var shake = false
+
+    var body: some View {
+        ZStack {
+            AnimatedBackground()
+            ScrollView {
+                VStack(spacing: 24) {
+                    header
+
+                    if store.pendingInviteCode != nil {
+                        inviteBanner
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    // Mode switcher
+                    Picker("", selection: $mode) {
+                        Text("Login").tag(Mode.login)
+                        Text("Registrieren").tag(Mode.register)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 4)
+
+                    VStack(spacing: 14) {
+                        if mode == .register {
+                            field(icon: "person.fill", placeholder: "Dein Name", text: $name)
+                        }
+                        field(icon: "envelope.fill", placeholder: "E-Mail-Adresse", text: $email,
+                              keyboard: .emailAddress)
+                        field(icon: "lock.fill", placeholder: "Passwort", text: $password, secure: true)
+                    }
+                    .padding(18)
+                    .glassCard()
+                    .offset(x: shake ? -10 : 0)
+
+                    if showHint {
+                        hintCard
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    Button(mode == .login ? "Einloggen" : "Konto erstellen") {
+                        submit()
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(email.isEmpty || password.count < 4)
+                    .opacity(email.isEmpty || password.count < 4 ? 0.5 : 1)
+
+                    Spacer(minLength: 40)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .navigationTitle("Mitglied")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .animation(.smooth, value: showHint)
+        .animation(.smooth, value: mode)
+        .onAppear { if store.pendingInviteCode != nil { mode = .register } }
+    }
+
+    private var inviteBanner: some View {
+        HStack(spacing: 12) {
+            Text("🎉").font(.system(size: 24))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(store.club != nil ? "Einladung zu \(store.club!.name)" : "Vereins-Einladung")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("Registriere dich – du wirst automatisch verknüpft.")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            Spacer()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.gold.opacity(0.16), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.gold.opacity(0.5), lineWidth: 1))
+    }
+
+    private var header: some View {
+        VStack(spacing: 10) {
+            Text(mode == .login ? "👋" : "✍️").font(.system(size: 56))
+            Text(mode == .login ? "Willkommen zurück" : "Neu dabei?")
+                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+            Text(mode == .login
+                 ? "Logge dich ein und buche deine Getränke."
+                 : "Registriere dich mit der E-Mail, die dein Verein hinterlegt hat.")
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.top, 12)
+    }
+
+    private var hintCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(Theme.gold)
+                .font(.system(size: 20))
+            Text(hintText)
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.gold.opacity(0.12), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.gold.opacity(0.4), lineWidth: 1))
+    }
+
+    private func field(icon: String, placeholder: String, text: Binding<String>,
+                       secure: Bool = false, keyboard: UIKeyboardType = .default) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(Theme.gold).frame(width: 22)
+            Group {
+                if secure {
+                    SecureField(placeholder, text: text)
+                } else {
+                    TextField(placeholder, text: text)
+                        .keyboardType(keyboard)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+            }
+            .font(.system(size: 16, weight: .medium, design: .rounded))
+            .foregroundStyle(.white)
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 14)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func submit() {
+        let result: AppStore.AuthResult = (mode == .login)
+            ? store.login(email: email, password: password)
+            : store.register(email: email, password: password, name: name)
+
+        switch result {
+        case .success:
+            Haptics.success()
+            SoundManager.shared.play(.beer)
+        case .notWhitelisted:
+            fail("Diese E-Mail ist noch nicht freigeschaltet. Bitte gib deine E-Mail-Adresse an deinen Vereinsadministrator weiter, damit du Zugriff auf die Getränke zur Buchung erhältst. 🍺")
+        case .wrongPassword:
+            fail("E-Mail oder Passwort stimmen nicht. Versuch es nochmal.")
+        case .alreadyRegistered:
+            fail("Für diese E-Mail gibt es schon ein Konto. Wechsle zum Login.")
+        }
+    }
+
+    private func fail(_ msg: String) {
+        Haptics.warning()
+        hintText = msg
+        showHint = true
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.2)) { shake = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.2)) { shake = false }
+        }
+    }
+}

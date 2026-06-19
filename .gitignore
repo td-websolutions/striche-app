@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Xcode — User-spezifisch & Build-Artefakte
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+build/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# CocoaPods / Carthage (falls später)
+Pods/
+Carthage/Build/
+
+# Secrets — NIEMALS committen
+*.env
+.env
+.env.*
+secrets.json
+*.pem
+*.p12
+*.mobileprovision
+*.cer
+
+# Server-Backups (enthalten Secrets, liegen außerhalb des Repos)
+server-backup/
