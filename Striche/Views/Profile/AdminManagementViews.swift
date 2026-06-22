@@ -4,6 +4,7 @@ import SwiftUI
 
 struct MembersAdminView: View {
     @EnvironmentObject var store: AppStore
+    @EnvironmentObject var backend: BackendSession
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var email = ""
@@ -31,6 +32,10 @@ struct MembersAdminView: View {
                             Button("Einladen") {
                                 Haptics.success()
                                 store.inviteMember(name: name, email: email, isAdmin: asAdmin)
+                                let invitee = email
+                                if let clubRemoteID = store.club?.remoteID {
+                                    Task { _ = await backend.sendInviteEmail(to: invitee, clubRemoteID: clubRemoteID) }
+                                }
                                 name = ""; email = ""; asAdmin = false
                             }
                             .buttonStyle(PrimaryButtonStyle())

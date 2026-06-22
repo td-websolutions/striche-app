@@ -59,6 +59,13 @@ struct MemberLoginView: View {
                     .disabled(email.isEmpty || password.count < 4)
                     .opacity(email.isEmpty || password.count < 4 ? 0.5 : 1)
 
+                    if mode == .login {
+                        Button("Passwort vergessen?") { forgotPassword() }
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.gold)
+                            .padding(.top, 2)
+                    }
+
                     Spacer(minLength: 40)
                 }
                 .padding(.horizontal, 24)
@@ -161,7 +168,13 @@ struct MemberLoginView: View {
             SoundManager.shared.play(.beer)
             syncBackendAuth(isRegister: isRegister, joinCode: joinCode)
         case .notWhitelisted:
-            fail("Diese E-Mail ist noch nicht freigeschaltet. Bitte gib deine E-Mail-Adresse an deinen Vereinsadministrator weiter, damit du Zugriff auf die Getränke zur Buchung erhältst. 🍺")
+            // Fresh-device join: no local club, but the user has an invite code.
+            // Validate it against the live backend and pull the club down.
+            if isRegister, let code = joinCode {
+                attemptRemoteJoin(code: code)
+            } else {
+                fail("Diese E-Mail ist noch nicht freigeschaltet. Bitte gib deine E-Mail-Adresse an deinen Vereinsadministrator weiter, damit du Zugriff auf die Getränke zur Buchung erhältst. 🍺")
+            }
         case .wrongPassword:
             fail("E-Mail oder Passwort stimmen nicht. Versuch es nochmal.")
         case .alreadyRegistered:
@@ -187,6 +200,52 @@ struct MemberLoginView: View {
                 store.setClubRemoteID(result.club)
             }
             await sync.sync()
+        }
+    }
+
+    /// Brand-new member on a device that has no local club: create/login the backend
+    /// account, let the server validate the invite code and add the membership, then
+    /// pull the club + roster + drinks. Only reached when local register() found no
+    /// whitelisted email AND an invite code is present.
+    private func attemptRemoteJoin(code: String) {
+        let email = self.email
+        let password = self.password
+        let name = self.name.isEmpty ? email : self.name
+        Task {
+            // Create the backend account, or sign in if it already exists.
+            var ok = await backend.register(email: email, password: password, name: name, emoji: "")
+            if !ok { ok = await backend.login(email: email, password: password) }
+            guard ok, let uid = backend.userID else {
+                fail("Anmeldung am Server fehlgeschlagen. Prüfe deine Internetverbindung und versuch es erneut.")
+                return
+            }
+            // Server-side validates the code, checks open_invite and creates the membership.
+            guard await backend.joinClub(inviteCode: code) != nil else {
+                fail("Dieser Einladungscode ist ungültig oder der Verein nimmt aktuell keine neuen Mitglieder auf.")
+                return
+            }
+            // Establish the local session, then pull the club + roster + drinks.
+            store.adoptRemoteJoin(remoteUserID: uid, email: email, password: password, name: name)
+            await sync.sync()
+            Haptics.success()
+            SoundManager.shared.play(.beer)
+        }
+    }
+
+    /// Trigger the password-reset e-mail. We always show the same confirmation
+    /// (regardless of whether the address exists) so we don't leak who has a konto.
+    private func forgotPassword() {
+        guard email.contains("@") else {
+            fail("Bitte gib oben zuerst deine E-Mail-Adresse ein, dann schicken wir dir einen Link zum Zurücksetzen.")
+            return
+        }
+        let address = email
+        Haptics.tap()
+        Task {
+            _ = await backend.requestPasswordReset(email: address)
+            hintText = "Falls ein Konto mit \(address) existiert, haben wir dir gerade einen Link zum Zurücksetzen deines Passworts geschickt. Schau in dein Postfach. 📬"
+            showHint = true
+            Haptics.success()
         }
     }
 

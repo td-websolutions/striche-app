@@ -1,0 +1,32 @@
+# Static marketing site for striche-app.de.
+# Self-contained nginx container that plugs into Coolify's existing Traefik proxy
+# (the `coolify` network + the `letsencrypt` cert resolver). It does NOT touch any
+# Coolify-managed service. Deploy target on the server: /opt/striche-website.
+services:
+  striche-web:
+    image: nginx:alpine
+    container_name: striche-web
+    restart: unless-stopped
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      # HTTP -> HTTPS redirect
+      - traefik.http.routers.striche-web-http.entryPoints=http
+      - traefik.http.routers.striche-web-http.rule=Host(`striche-app.de`) || Host(`www.striche-app.de`)
+      - traefik.http.routers.striche-web-http.middlewares=striche-web-redirect
+      - traefik.http.middlewares.striche-web-redirect.redirectscheme.scheme=https
+      # HTTPS (Let's Encrypt via Coolify's Traefik)
+      - traefik.http.routers.striche-web-https.entryPoints=https
+      - traefik.http.routers.striche-web-https.rule=Host(`striche-app.de`) || Host(`www.striche-app.de`)
+      - traefik.http.routers.striche-web-https.tls=true
+      - traefik.http.routers.striche-web-https.tls.certresolver=letsencrypt
+      - traefik.http.services.striche-web.loadbalancer.server.port=80
+
+networks:
+  coolify:
+    external: true

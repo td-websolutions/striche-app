@@ -73,7 +73,19 @@ final class BackendSession: ObservableObject {
                 identity: email, password: password, returning: UserRecord.self)
             self.token = auth.token
             self.user = auth.record
+            // Bestätigungs-Mail anstoßen (best effort – scheitert still ohne SMTP).
+            try? await self.client.requestVerification(email: email)
         }
+    }
+
+    /// Send the e-mail-verification message again (best effort).
+    func requestVerification(email: String) async -> Bool {
+        await run { try await self.client.requestVerification(email: email) }
+    }
+
+    /// Trigger the "forgot password" e-mail. Returns true if the request was accepted.
+    func requestPasswordReset(email: String) async -> Bool {
+        await run { try await self.client.requestPasswordReset(email: email) }
     }
 
     func login(email: String, password: String) async -> Bool {
@@ -125,6 +137,18 @@ final class BackendSession: ObservableObject {
         return await runValue {
             try await self.client.call("api/striche/clubs", body: body,
                                        token: token, returning: ClubJoinResult.self)
+        }
+    }
+
+    /// E-mail a branded join invitation for the given remote club to `email`.
+    /// Server validates the caller is an admin of that club. Best effort.
+    func sendInviteEmail(to email: String, clubRemoteID: String) async -> Bool {
+        guard let token else { return false }
+        struct Body: Encodable { let email: String; let club: String }
+        return await run {
+            _ = try await self.client.call("api/striche/invite-email",
+                                           body: Body(email: email, club: clubRemoteID),
+                                           token: token, returning: EmptyResponse.self)
         }
     }
 

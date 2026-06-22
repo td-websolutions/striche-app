@@ -29,6 +29,10 @@ struct StricheApp: App {
                 .onOpenURL { url in
                     store.handleInviteURL(url)
                 }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    // Universal Links (https://striche-app.de/join?code=...) arrive here.
+                    if let url = activity.webpageURL { store.handleInviteURL(url) }
+                }
                 .task {
                     // Validate/refresh any stored backend token on launch, then push.
                     await backend.restore()

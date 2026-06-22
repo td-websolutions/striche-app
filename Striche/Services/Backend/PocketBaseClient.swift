@@ -216,6 +216,22 @@ struct PocketBaseClient {
         return try await send(req, as: PBAuth<U>.self)
     }
 
+    /// Ask PocketBase to (re)send the e-mail verification message. Returns 204.
+    func requestVerification(email: String) async throws {
+        let url = baseURL.appendingPathComponent("api/collections/users/request-verification")
+        let payload = try Self.makeEncoder().encode(["email": email])
+        let req = request("POST", url: url, token: nil, body: payload)
+        _ = try await send(req, as: EmptyResponse.self)
+    }
+
+    /// Ask PocketBase to send the password-reset e-mail. Returns 204.
+    func requestPasswordReset(email: String) async throws {
+        let url = baseURL.appendingPathComponent("api/collections/users/request-password-reset")
+        let payload = try Self.makeEncoder().encode(["email": email])
+        let req = request("POST", url: url, token: nil, body: payload)
+        _ = try await send(req, as: EmptyResponse.self)
+    }
+
     // MARK: Generic CRUD
 
     func list<T: Decodable>(

@@ -107,10 +107,12 @@ final class AppStore: ObservableObject {
         data.drinks.move(fromOffsets: source, toOffset: destination)
     }
 
-    /// Shareable invite link for the club (custom URL scheme).
+    /// Shareable invite link for the club. Uses the https Universal-Link form so it
+    /// also works for people who don't have the app yet (they land on the web page
+    /// striche-app.de/join, which then hands off into the app or shows the App Store).
     var inviteLink: String {
         let code = data.club?.inviteCode ?? ""
-        return "striche://join?code=\(code)"
+        return "https://striche-app.de/join?code=\(code)"
     }
 
     /// Ready-to-send WhatsApp invite message including the link.
@@ -132,9 +134,16 @@ final class AppStore: ObservableObject {
         return URL(string: "https://wa.me/?text=\(text)")
     }
 
-    /// Capture an opened invite URL (striche://join?code=XXXXXX).
+    /// Capture an opened invite URL. Accepts both the custom scheme
+    /// (striche://join?code=XXXXXX) and the https Universal Link
+    /// (https://striche-app.de/join?code=XXXXXX).
     func handleInviteURL(_ url: URL) {
-        guard url.scheme?.lowercased() == "striche" else { return }
+        let scheme = url.scheme?.lowercased()
+        let isCustom = scheme == "striche"
+        let isUniversal = (scheme == "https" || scheme == "http")
+            && url.host?.lowercased() == "striche-app.de"
+            && url.path.lowercased().hasPrefix("/join")
+        guard isCustom || isUniversal else { return }
         let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
         if let code = comps?.queryItems?.first(where: { $0.name == "code" })?.value, !code.isEmpty {
             pendingInviteCode = code.uppercased()
@@ -304,6 +313,32 @@ final class AppStore: ObservableObject {
     }
 
     func logout() { data.currentMemberID = nil }
+
+    /// Adopt a backend-validated invite join on a fresh device (no local club yet).
+    /// The invite code was already verified server-side by `/api/striche/join`, so we
+    /// just establish the local session: match/create the member by backend user id,
+    /// store the password hash for later offline login, and make them the current user.
+    /// The club + roster + drinks then arrive via the subsequent pull.
+    func adoptRemoteJoin(remoteUserID: String, email: String, password: String, name: String) {
+        let email = email.lowercased()
+        if let idx = data.members.firstIndex(where: { $0.remoteID == remoteUserID }) {
+            data.members[idx].passwordHash = hash(password)
+            if !name.isEmpty { data.members[idx].name = name }
+            data.currentMemberID = data.members[idx].id
+        } else if let idx = data.members.firstIndex(where: { $0.email == email }) {
+            data.members[idx].remoteID = remoteUserID
+            data.members[idx].passwordHash = hash(password)
+            data.currentMemberID = data.members[idx].id
+        } else {
+            var member = Member(name: name.isEmpty ? email : name, email: email,
+                                emoji: AvatarPool.random())
+            member.remoteID = remoteUserID
+            member.passwordHash = hash(password)
+            data.members.append(member)
+            data.currentMemberID = member.id
+        }
+        pendingInviteCode = nil
+    }
 
     /// Store the backend (PocketBase) user id on the current member for later sync.
     func setCurrentMemberRemoteID(_ remoteID: String) {

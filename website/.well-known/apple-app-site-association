@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.de.verein.striche"],
+        "components": [
+          { "/": "/join", "comment": "Vereins-Einladung (Universal Link)" },
+          { "/": "/join/*", "comment": "Vereins-Einladung mit Pfad" }
+        ]
+      }
+    ]
+  }
+}

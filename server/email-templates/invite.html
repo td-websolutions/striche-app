@@ -1,0 +1,66 @@
+<!--
+  Striche – Vereins-Einladung (gesendet von custom Server-Hook beim Einladen eines Mitglieds)
+  Betreff/Subject: {CLUB_NAME} lädt dich zu Striche ein 🍻
+  Eigene Platzhalter (vom Hook ersetzt): {CLUB_NAME} {INVITE_LINK} {INVITE_CODE} {APP_URL}
+-->
+<body style="margin:0;padding:0;background:#0B0D17;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0B0D17;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#141831;border:1px solid rgba(255,255,255,0.10);border-radius:24px;overflow:hidden;font-family:'Nunito','Segoe UI',Helvetica,Arial,sans-serif;">
+          <!-- Header -->
+          <tr>
+            <td align="center" style="padding:36px 32px 8px;">
+              <div style="font-size:52px;line-height:1;">🍻</div>
+              <div style="margin-top:10px;font-size:13px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:#F0B429;">Striche</div>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td align="center" style="padding:12px 36px 4px;">
+              <h1 style="margin:0;font-size:24px;font-weight:900;color:#FFFFFF;letter-spacing:-0.02em;">Du bist eingeladen!</h1>
+              <p style="margin:14px 0 0;font-size:15px;line-height:1.6;color:rgba(255,255,255,0.72);">
+                <strong style="color:#FFFFFF;">{CLUB_NAME}</strong> nutzt jetzt Striche – die digitale Strichliste fürs Vereinsheim. Tritt mit einem Tipp bei und buch deine Getränke ganz einfach per Fingertipp.
+              </p>
+            </td>
+          </tr>
+          <!-- Button -->
+          <tr>
+            <td align="center" style="padding:28px 36px 8px;">
+              <a href="{INVITE_LINK}" style="display:inline-block;padding:16px 34px;border-radius:16px;background:#F0B429;color:#2A1A00;font-size:16px;font-weight:800;text-decoration:none;">
+                Verein beitreten
+              </a>
+            </td>
+          </tr>
+          <!-- Code -->
+          <tr>
+            <td align="center" style="padding:14px 36px 4px;">
+              <p style="margin:0 0 8px;font-size:12px;line-height:1.6;color:rgba(255,255,255,0.50);">
+                Oder gib in der App diesen Einladungscode ein:
+              </p>
+              <div style="display:inline-block;padding:12px 22px;border-radius:14px;background:rgba(240,180,41,0.12);border:1px solid rgba(240,180,41,0.35);font-size:22px;font-weight:900;letter-spacing:0.22em;color:#F0B429;">{INVITE_CODE}</div>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:14px 36px 0;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:rgba(255,255,255,0.40);">
+                Link geht nicht? Kopiere ihn in deinen Browser:<br/>
+                <a href="{INVITE_LINK}" style="color:#F0B429;word-break:break-all;">{INVITE_LINK}</a>
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding:28px 36px 32px;">
+              <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 16px;"/>
+              <p style="margin:0;font-size:12px;line-height:1.6;color:rgba(255,255,255,0.40);">
+                Du kennst {CLUB_NAME} nicht? Dann ignoriere diese E-Mail einfach.<br/>
+                <a href="{APP_URL}" style="color:rgba(255,255,255,0.55);text-decoration:none;">{APP_URL}</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>

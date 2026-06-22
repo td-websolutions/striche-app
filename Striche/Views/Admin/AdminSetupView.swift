@@ -36,7 +36,11 @@ struct AdminSetupView: View {
     @State private var inviteCode = Club.makeInviteCode()
     @State private var showManualAdd = false
 
-    private var inviteLink: String { "striche://join?code=\(inviteCode)" }
+    /// Backend user id of the admin, captured when the backend club is created
+    /// (on entering the invite step) so the invite link is live before sharing.
+    @State private var adminRemoteID: String?
+
+    private var inviteLink: String { "https://striche-app.de/join?code=\(inviteCode)" }
     private var inviteMessage: String {
         let name = clubName.isEmpty ? "unserem Verein" : clubName
         return """
@@ -61,8 +65,8 @@ struct AdminSetupView: View {
                     case 0: accountStep
                     case 1: clubStep
                     case 2: drinksStep
-                    case 3: invitesStep
-                    default: finishStep
+                    case 3: locationStep
+                    default: invitesStep
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -155,7 +159,13 @@ struct AdminSetupView: View {
     private func next() {
         Haptics.tap()
         if step < totalSteps - 1 {
+            let from = step
             withAnimation { step += 1 }
+            // Entering the location step: create the LOCAL club so the location
+            // (and seeded drinks) actually persist. Entering the invite step:
+            // create the BACKEND club so the shared invite link is immediately live.
+            if from == 2 { createLocalClub() }
+            if from == 3 { createBackendClub() }
         } else {
             finish()
         }
@@ -285,7 +295,7 @@ struct AdminSetupView: View {
 
     private var invitesStep: some View {
         StepScroll(emoji: "✉️", title: "Mitglieder einladen",
-                   subtitle: "Teile einfach den Einladungslink in eurer WhatsApp-Gruppe – alle treten mit einem Tipp bei.") {
+                   subtitle: "Dein Verein ist angelegt – der Link ist live. Teile ihn einfach in eurer WhatsApp-Gruppe, alle treten mit einem Tipp bei.") {
             VStack(spacing: 16) {
                 InviteLinkCard(link: inviteLink, message: inviteMessage)
 
@@ -351,19 +361,16 @@ struct AdminSetupView: View {
         }
     }
 
-    private var finishStep: some View {
+    private var locationStep: some View {
         StepScroll(emoji: "📍", title: "Standort des Vereinsheims",
-                   subtitle: "Optional: Die App begrüßt Mitglieder am Vereinsheim und erinnert sie beim Gehen ans Buchen.") {
+                   subtitle: "Optional: Die App begrüßt Mitglieder am Vereinsheim und erinnert sie beim Gehen ans Buchen. Adresse suchen oder vor Ort erfassen.") {
             VStack(spacing: 16) {
                 LocationSetupCard()
-                VStack(spacing: 8) {
-                    Text("Bereit! 🎉").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.white)
-                    Text("Mit »Fertig« legst du den Verein an und landest direkt in der Getränkeliste.")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 8)
+                Text("Mit »Weiter« geht's zum Einladen – dein Verein ist dann startklar.")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 8)
             }
         }
     }
@@ -391,43 +398,53 @@ struct AdminSetupView: View {
         return count
     }
 
-    private func finish() {
-        Haptics.success()
-        SoundManager.shared.play(.sekt)
-
+    /// Create/refresh the LOCAL club (and seed drinks) so the location step can
+    /// actually persist coordinates. createClub merges, so going back and forth
+    /// keeps any location already set. No login happens here.
+    private func createLocalClub() {
         store.createClub(name: clubName, tagline: tagline, logo: logoData, inviteCode: inviteCode)
         store.setSeedDrinks(selectedDrinks)
+    }
 
-        // Persist invited members.
-        for m in pendingMembers {
-            store.inviteMember(name: m.name, email: m.email, isAdmin: m.isAdmin)
-        }
-
-        // Create + login the admin themselves.
-        let admin = store.inviteMember(name: adminName, email: adminEmail, isAdmin: true)
-        _ = store.register(email: admin.email, password: adminPassword, name: adminName)
-
-        NotificationManager.shared.requestAuthorization()
-
-        // Mirror onto the backend (best-effort, offline-safe): register the admin
-        // user and create the club via the privileged hook, which also grants the
-        // admin membership the schema rules forbid clients from creating.
+    /// Create the club on the backend (best-effort) BEFORE the invite step so the
+    /// shared link is immediately joinable from another device. Registers the admin
+    /// user (needed for the auth token) but does NOT log the admin in locally yet –
+    /// that happens in finish() to avoid tearing down the wizard mid-flow.
+    private func createBackendClub() {
+        guard adminRemoteID == nil else { return }
         let email = adminEmail, password = adminPassword, name = adminName
         let code = inviteCode, club = clubName, line = tagline
         let openInvite = store.club?.openInvite ?? true
         Task {
-            let ok = await backend.register(email: email, password: password,
-                                            name: name, emoji: store.currentMember?.emoji ?? "")
+            let ok = await backend.register(email: email, password: password, name: name, emoji: "")
             guard ok, let uid = backend.userID else { return }
-            store.setCurrentMemberRemoteID(uid)
+            adminRemoteID = uid
             if let result = await backend.createClub(
                 name: club, tagline: line, inviteCode: code,
                 openInvite: openInvite, planID: "free", getraenkewartEmail: nil) {
                 store.setClubRemoteID(result.club)
             }
-            // Push drinks + the rest now that the club exists remotely.
-            await sync.sync()
         }
+    }
+
+    private func finish() {
+        Haptics.success()
+        SoundManager.shared.play(.sekt)
+
+        // Persist invited members (whitelist for the join flow).
+        for m in pendingMembers {
+            store.inviteMember(name: m.name, email: m.email, isAdmin: m.isAdmin)
+        }
+
+        // Create + login the admin LAST – this flips RootView into the main app.
+        let admin = store.inviteMember(name: adminName, email: adminEmail, isAdmin: true)
+        _ = store.register(email: admin.email, password: adminPassword, name: adminName)
+        if let uid = adminRemoteID { store.setCurrentMemberRemoteID(uid) }
+
+        NotificationManager.shared.requestAuthorization()
+
+        // Push drinks + the rest now that club + admin exist remotely.
+        Task { await sync.sync() }
     }
 }
 
