@@ -91,6 +91,53 @@ final class BackendSession: ObservableObject {
         lastError = nil
     }
 
+    // MARK: - Striche custom endpoints (multi-tenant join flow)
+
+    /// Result of the privileged `/api/striche/clubs` and `/api/striche/join` routes.
+    struct ClubJoinResult: Decodable {
+        let club: String       // remote club record id
+        let membership: String // remote membership record id
+        let inviteCode: String
+
+        enum CodingKeys: String, CodingKey {
+            case club, membership
+            case inviteCode = "invite_code"
+        }
+    }
+
+    /// Create a club on the backend and become its admin. Returns the remote ids,
+    /// or nil on failure (offline/error) – the local club still works regardless.
+    func createClub(name: String, tagline: String, inviteCode: String?,
+                    openInvite: Bool, planID: String?,
+                    getraenkewartEmail: String?) async -> ClubJoinResult? {
+        guard let token else { return nil }
+        struct Body: Encodable {
+            let name: String
+            let tagline: String
+            let invite_code: String?
+            let open_invite: Bool
+            let plan_id: String?
+            let getraenkewart_email: String?
+        }
+        let body = Body(name: name, tagline: tagline, invite_code: inviteCode,
+                        open_invite: openInvite, plan_id: planID,
+                        getraenkewart_email: getraenkewartEmail)
+        return await runValue {
+            try await self.client.call("api/striche/clubs", body: body,
+                                       token: token, returning: ClubJoinResult.self)
+        }
+    }
+
+    /// Join an existing club via its invite code. Returns the remote ids, or nil.
+    func joinClub(inviteCode: String) async -> ClubJoinResult? {
+        guard let token else { return nil }
+        struct Body: Encodable { let invite_code: String }
+        return await runValue {
+            try await self.client.call("api/striche/join", body: Body(invite_code: inviteCode),
+                                       token: token, returning: ClubJoinResult.self)
+        }
+    }
+
     // MARK: - Helper
 
     /// Führt einen Auth-Block aus, mappt Fehler in `lastError` und liefert Erfolg.
@@ -104,6 +151,19 @@ final class BackendSession: ObservableObject {
         } catch {
             lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return false
+        }
+    }
+
+    /// Like `run` but returns the produced value (or nil on error).
+    private func runValue<T>(_ work: @escaping () async throws -> T) async -> T? {
+        isWorking = true
+        lastError = nil
+        defer { isWorking = false }
+        do {
+            return try await work()
+        } catch {
+            lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return nil
         }
     }
 }

@@ -273,6 +273,24 @@ struct PocketBaseClient {
         let req = request("DELETE", url: url, token: token)
         _ = try await send(req, as: EmptyResponse.self)
     }
+
+    // MARK: Custom endpoints (pb_hooks)
+
+    /// Call a custom server route such as `api/striche/clubs` or `api/striche/join`.
+    /// These run server-side with elevated access to create the membership the
+    /// schema rules forbid clients from creating directly.
+    func call<T: Decodable>(
+        _ path: String,
+        method: String = "POST",
+        body: Encodable? = nil,
+        token: String?,
+        returning: T.Type
+    ) async throws -> T {
+        let url = baseURL.appendingPathComponent(path)
+        let payload = try body.map { try Self.makeEncoder().encode(AnyEncodable($0)) }
+        let req = request(method, url: url, token: token, body: payload)
+        return try await send(req, as: T.self)
+    }
 }
 
 // MARK: - Helpers

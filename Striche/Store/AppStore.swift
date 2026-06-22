@@ -305,6 +305,109 @@ final class AppStore: ObservableObject {
 
     func logout() { data.currentMemberID = nil }
 
+    /// Store the backend (PocketBase) user id on the current member for later sync.
+    func setCurrentMemberRemoteID(_ remoteID: String) {
+        guard let id = data.currentMemberID,
+              let idx = data.members.firstIndex(where: { $0.id == id }) else { return }
+        guard data.members[idx].remoteID != remoteID else { return }
+        data.members[idx].remoteID = remoteID
+    }
+
+    /// Store the backend ids returned by the club create/join hooks.
+    func setClubRemoteID(_ remoteID: String) {
+        guard var club = data.club, club.remoteID != remoteID else { return }
+        club.remoteID = remoteID
+        data.club = club
+    }
+
+    /// Persist the backend record id for a synced drink/booking/credit/watch entity.
+    func setDrinkRemoteID(_ localID: UUID, _ remoteID: String) {
+        if let i = data.drinks.firstIndex(where: { $0.id == localID }) { data.drinks[i].remoteID = remoteID }
+    }
+    func setBookingRemoteID(_ localID: UUID, _ remoteID: String) {
+        if let i = data.bookings.firstIndex(where: { $0.id == localID }) { data.bookings[i].remoteID = remoteID }
+    }
+    func setCreditTxRemoteID(_ localID: UUID, _ remoteID: String) {
+        if let i = data.creditTx.firstIndex(where: { $0.id == localID }) { data.creditTx[i].remoteID = remoteID }
+    }
+    func setWatchLinkRemoteID(_ localID: UUID, _ remoteID: String) {
+        if let i = data.watchLinks.firstIndex(where: { $0.id == localID }) { data.watchLinks[i].remoteID = remoteID }
+    }
+
+    // MARK: Pull upserts (remote -> local, matched by remoteID)
+
+    func markPulled(_ date: Date) { data.sync.lastPulledAt = date }
+
+    /// Adopt/refresh the club from the backend. Keeps the local id + logo.
+    func upsertPulledClub(_ remote: Club) {
+        guard var local = data.club else { data.club = remote; return }
+        guard local.remoteID == nil || local.remoteID == remote.remoteID else { return }
+        local.name = remote.name
+        local.tagline = remote.tagline
+        local.inviteCode = remote.inviteCode
+        local.openInvite = remote.openInvite
+        local.latitude = remote.latitude
+        local.longitude = remote.longitude
+        local.geofenceRadius = remote.geofenceRadius
+        local.planID = remote.planID
+        local.pendingPlanID = remote.pendingPlanID
+        local.getraenkewartEmail = remote.getraenkewartEmail
+        local.remoteID = remote.remoteID
+        data.club = local
+    }
+
+    func upsertPulledMember(_ remote: Member) {
+        if let i = data.members.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
+            data.members[i].name = remote.name
+            data.members[i].email = remote.email
+            data.members[i].emoji = remote.emoji
+            data.members[i].isAdmin = remote.isAdmin
+        } else {
+            data.members.append(remote)
+        }
+    }
+
+    /// Backend owns name/price/emoji/tint/sizes/icon; local keeps category/sound/symbol.
+    func upsertPulledDrink(_ remote: Drink) {
+        if let i = data.drinks.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
+            data.drinks[i].name = remote.name
+            data.drinks[i].emoji = remote.emoji
+            data.drinks[i].price = remote.price
+            data.drinks[i].tintHex = remote.tintHex
+            data.drinks[i].sizes = remote.sizes
+            data.drinks[i].iconSymbol = remote.iconSymbol
+        } else {
+            data.drinks.append(remote)
+        }
+    }
+
+    func upsertPulledBooking(_ remote: Booking) {
+        if let i = data.bookings.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
+            var b = remote; b.id = data.bookings[i].id
+            data.bookings[i] = b
+        } else {
+            data.bookings.insert(remote, at: 0)
+        }
+    }
+
+    func upsertPulledCreditTx(_ remote: CreditTransaction) {
+        if let i = data.creditTx.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
+            var t = remote; t.id = data.creditTx[i].id
+            data.creditTx[i] = t
+        } else {
+            data.creditTx.append(remote)
+        }
+    }
+
+    func upsertPulledWatchLink(_ remote: WatchLink) {
+        if let i = data.watchLinks.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
+            var w = remote; w.id = data.watchLinks[i].id
+            data.watchLinks[i] = w
+        } else {
+            data.watchLinks.append(remote)
+        }
+    }
+
     /// Update the current member's avatar: pick an emoji (clears any photo) or set a custom photo.
     func updateAvatar(emoji: String? = nil, photo: Data? = nil) {
         guard let id = data.currentMemberID,

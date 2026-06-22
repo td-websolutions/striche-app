@@ -27,6 +27,7 @@ struct Drink: Identifiable, Codable, Hashable {
     var sizes: [DrinkSize]     // empty -> single price, no chooser
     var sound: DrinkSound      // which bundled sound to play
     var iconSymbol: String?    // optional SF Symbol shown instead of emoji (e.g. white-wine glass)
+    var remoteID: String?      // PocketBase record id once synced (nil = local-only)
 
     init(id: UUID = UUID(),
          name: String,
@@ -98,6 +99,7 @@ struct Member: Identifiable, Codable, Hashable {
     var emoji: String              // avatar emoji
     var avatarData: Data?          // optional custom profile photo (overrides emoji)
     var joined: Date
+    var remoteID: String?          // PocketBase user id once synced (nil = local-only / invite)
 
     init(id: UUID = UUID(),
          name: String,
@@ -134,6 +136,7 @@ struct Booking: Identifiable, Codable, Hashable {
     var price: Double
     var date: Date
     var paid: Bool
+    var remoteID: String?      // PocketBase record id once synced (nil = local-only)
 
     init(id: UUID = UUID(),
          memberID: UUID,
@@ -169,6 +172,7 @@ struct CreditTransaction: Identifiable, Codable, Hashable {
     var kind: CreditKind
     var date: Date
     var note: String?
+    var remoteID: String?   // PocketBase record id once synced (nil = local-only)
 
     init(id: UUID = UUID(), memberID: UUID, amount: Double,
          kind: CreditKind, date: Date = .now, note: String? = nil) {
@@ -197,6 +201,7 @@ struct WatchLink: Identifiable, Codable, Hashable {
     var watcherID: UUID
     var status: WatchStatus
     var created: Date
+    var remoteID: String?   // PocketBase record id once synced (nil = local-only)
 
     init(id: UUID = UUID(), bookerID: UUID, watcherID: UUID,
          status: WatchStatus = .pending, created: Date = .now) {
@@ -223,6 +228,7 @@ struct Club: Identifiable, Codable {
     var planID: String              // active/licensed seat plan (billed by invoice)
     var pendingPlanID: String?      // requested upgrade awaiting invoice/confirmation
     var getraenkewartEmail: String? // empty-drink reports are sent here
+    var remoteID: String?           // PocketBase record id once synced (nil = local-only)
 
     init(id: UUID = UUID(),
          name: String = "",
@@ -235,7 +241,8 @@ struct Club: Identifiable, Codable {
          openInvite: Bool = true,
          planID: String = SeatPlan.freeID,
          pendingPlanID: String? = nil,
-         getraenkewartEmail: String? = nil) {
+         getraenkewartEmail: String? = nil,
+         remoteID: String? = nil) {
         self.id = id
         self.name = name
         self.logoData = logoData
@@ -248,6 +255,7 @@ struct Club: Identifiable, Codable {
         self.planID = planID
         self.pendingPlanID = pendingPlanID
         self.getraenkewartEmail = getraenkewartEmail
+        self.remoteID = remoteID
     }
 
     static func makeInviteCode() -> String {
@@ -257,7 +265,7 @@ struct Club: Identifiable, Codable {
 
     // Tolerant decoding so older saved data (without invite fields) still loads.
     enum CodingKeys: String, CodingKey {
-        case id, name, logoData, tagline, latitude, longitude, geofenceRadius, inviteCode, openInvite, planID, pendingPlanID, getraenkewartEmail
+        case id, name, logoData, tagline, latitude, longitude, geofenceRadius, inviteCode, openInvite, planID, pendingPlanID, getraenkewartEmail, remoteID
     }
 
     init(from decoder: Decoder) throws {
@@ -274,6 +282,7 @@ struct Club: Identifiable, Codable {
         planID = try c.decodeIfPresent(String.self, forKey: .planID) ?? SeatPlan.freeID
         pendingPlanID = try c.decodeIfPresent(String.self, forKey: .pendingPlanID)
         getraenkewartEmail = try c.decodeIfPresent(String.self, forKey: .getraenkewartEmail)
+        remoteID = try c.decodeIfPresent(String.self, forKey: .remoteID)
     }
 
     var logoImage: UIImage? {
@@ -335,12 +344,13 @@ struct AppData: Codable {
     var watchLinks: [WatchLink] = []
     var creditTx: [CreditTransaction] = []
     var currentMemberID: UUID? = nil
+    var sync = SyncMeta()
 
     init() {}
 
     // Tolerant decoding so adding new fields never wipes existing saved data.
     enum CodingKeys: String, CodingKey {
-        case didOnboard, club, drinks, members, bookings, watchLinks, creditTx, currentMemberID
+        case didOnboard, club, drinks, members, bookings, watchLinks, creditTx, currentMemberID, sync
     }
 
     init(from decoder: Decoder) throws {
@@ -353,7 +363,52 @@ struct AppData: Codable {
         watchLinks = try c.decodeIfPresent([WatchLink].self, forKey: .watchLinks) ?? []
         creditTx = try c.decodeIfPresent([CreditTransaction].self, forKey: .creditTx) ?? []
         currentMemberID = try c.decodeIfPresent(UUID.self, forKey: .currentMemberID)
+        sync = try c.decodeIfPresent(SyncMeta.self, forKey: .sync) ?? SyncMeta()
     }
+}
+
+// MARK: - Sync metadata (offline-first bookkeeping)
+
+/// Tracks what still needs pushing to the backend and when we last pulled.
+/// Lives inside AppData so it survives restarts alongside the data it describes.
+struct SyncMeta: Codable {
+    /// Server timestamp of the last successful pull (for incremental sync).
+    var lastPulledAt: Date? = nil
+    /// Local ids of records mutated since the last successful push, per entity.
+    var dirtyClub: Bool = false
+    var dirtyMembers: Set<UUID> = []
+    var dirtyDrinks: Set<UUID> = []
+    var dirtyBookings: Set<UUID> = []
+    var dirtyCreditTx: Set<UUID> = []
+    var dirtyWatchLinks: Set<UUID> = []
+    /// Records deleted locally that still need to be deleted on the backend.
+    var pendingDeletes: [PendingDelete] = []
+
+    init() {}
+
+    // Tolerant decoding so future fields never break older saved data.
+    enum CodingKeys: String, CodingKey {
+        case lastPulledAt, dirtyClub, dirtyMembers, dirtyDrinks, dirtyBookings,
+             dirtyCreditTx, dirtyWatchLinks, pendingDeletes
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        lastPulledAt = try c.decodeIfPresent(Date.self, forKey: .lastPulledAt)
+        dirtyClub = try c.decodeIfPresent(Bool.self, forKey: .dirtyClub) ?? false
+        dirtyMembers = try c.decodeIfPresent(Set<UUID>.self, forKey: .dirtyMembers) ?? []
+        dirtyDrinks = try c.decodeIfPresent(Set<UUID>.self, forKey: .dirtyDrinks) ?? []
+        dirtyBookings = try c.decodeIfPresent(Set<UUID>.self, forKey: .dirtyBookings) ?? []
+        dirtyCreditTx = try c.decodeIfPresent(Set<UUID>.self, forKey: .dirtyCreditTx) ?? []
+        dirtyWatchLinks = try c.decodeIfPresent(Set<UUID>.self, forKey: .dirtyWatchLinks) ?? []
+        pendingDeletes = try c.decodeIfPresent([PendingDelete].self, forKey: .pendingDeletes) ?? []
+    }
+}
+
+/// A record that was removed locally and still has to be deleted on the backend.
+struct PendingDelete: Codable, Hashable {
+    var collection: String   // PocketBase collection name
+    var remoteID: String     // record id to delete
 }
 
 // MARK: - Seed catalog

@@ -46,6 +46,19 @@ struct MembershipRecord: PBRecord {
     var updated: Date?
 }
 
+/// Membership row with the related user expanded (`?expand=user`), used by the
+/// pull to rebuild the local member list from the backend.
+struct MembershipExpand: Decodable {
+    let id: String
+    let user: String
+    let club: String
+    let role: String
+    let invited: Bool?
+    let expand: Expand?
+
+    struct Expand: Decodable { let user: UserRecord? }
+}
+
 struct DrinkSizeDTO: Codable, Hashable {
     var label: String
     var priceModifier: Double

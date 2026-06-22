@@ -3,6 +3,8 @@ import PhotosUI
 
 struct AdminSetupView: View {
     @EnvironmentObject var store: AppStore
+    @EnvironmentObject var backend: BackendSession
+    @EnvironmentObject var sync: SyncEngine
     @Environment(\.dismiss) private var dismiss
 
     @State private var step = 0
@@ -406,6 +408,26 @@ struct AdminSetupView: View {
         _ = store.register(email: admin.email, password: adminPassword, name: adminName)
 
         NotificationManager.shared.requestAuthorization()
+
+        // Mirror onto the backend (best-effort, offline-safe): register the admin
+        // user and create the club via the privileged hook, which also grants the
+        // admin membership the schema rules forbid clients from creating.
+        let email = adminEmail, password = adminPassword, name = adminName
+        let code = inviteCode, club = clubName, line = tagline
+        let openInvite = store.club?.openInvite ?? true
+        Task {
+            let ok = await backend.register(email: email, password: password,
+                                            name: name, emoji: store.currentMember?.emoji ?? "")
+            guard ok, let uid = backend.userID else { return }
+            store.setCurrentMemberRemoteID(uid)
+            if let result = await backend.createClub(
+                name: club, tagline: line, inviteCode: code,
+                openInvite: openInvite, planID: "free", getraenkewartEmail: nil) {
+                store.setClubRemoteID(result.club)
+            }
+            // Push drinks + the rest now that the club exists remotely.
+            await sync.sync()
+        }
     }
 }
 

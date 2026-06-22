@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B0D17"/>
+      <stop offset="1" stop-color="#1E2347"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F0B429"/>
+      <stop offset="1" stop-color="#C97B00"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.35" r="0.6">
+      <stop offset="0" stop-color="#F0B429" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#F0B429" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <circle cx="32" cy="24" r="22" fill="url(#glow)"/>
+  <!-- beer mug -->
+  <g transform="translate(16 14)">
+    <rect x="2" y="8" width="22" height="30" rx="5" fill="url(#gold)"/>
+    <rect x="24" y="14" width="9" height="16" rx="4.5" fill="none" stroke="url(#gold)" stroke-width="3.5"/>
+    <rect x="2" y="8" width="22" height="8" rx="4" fill="#FFF4D6"/>
+    <circle cx="8" cy="7" r="4" fill="#FFF4D6"/>
+    <circle cx="15" cy="5" r="4.5" fill="#FFF4D6"/>
+    <circle cx="21" cy="7" r="3.5" fill="#FFF4D6"/>
+    <!-- tally marks -->
+    <g stroke="#0B0D17" stroke-width="2" stroke-linecap="round">
+      <line x1="7" y1="22" x2="7" y2="32"/>
+      <line x1="11" y1="22" x2="11" y2="32"/>
+      <line x1="15" y1="22" x2="15" y2="32"/>
+      <line x1="19" y1="22" x2="19" y2="32"/>
+      <line x1="5" y1="33" x2="21" y2="21"/>
+    </g>
+  </g>
+</svg>

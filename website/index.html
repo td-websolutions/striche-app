@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0B0D17" />
+
+  <!-- Primary SEO -->
+  <title>Striche – Digitale Getränkeliste für Vereine | Strichliste-App</title>
+  <meta name="description" content="Striche ist die digitale Getränkeliste für Vereine: Strichliste per Fingertipp statt Zettel. Getränke buchen, Kasse, Guthaben & Auswartung – ersetzt den Getränkewart. Jetzt kostenlos starten." />
+  <meta name="keywords" content="Getränkeliste Verein, Getränkeliste Vereine, digitale Strichliste, Strichliste App, Getränkewart App, Getränkeabrechnung Verein, Vereinsheim Getränke, Strichliste Verein, Getränke App Verein" />
+  <meta name="author" content="Striche" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://striche-app.de/" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="de_DE" />
+  <meta property="og:site_name" content="Striche" />
+  <meta property="og:title" content="Striche – Digitale Getränkeliste für Vereine" />
+  <meta property="og:description" content="Die digitale Strichliste für deinen Verein: Getränke per Fingertipp buchen, Kasse & Guthaben im Blick – ersetzt den Getränkewart." />
+  <meta property="og:url" content="https://striche-app.de/" />
+  <meta property="og:image" content="https://striche-app.de/assets/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Striche – Digitale Getränkeliste für Vereine" />
+  <meta name="twitter:description" content="Die digitale Strichliste für deinen Verein: Getränke per Fingertipp buchen, Kasse & Guthaben im Blick." />
+  <meta name="twitter:image" content="https://striche-app.de/assets/og-image.png" />
+
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="apple-touch-icon" href="assets/favicon.svg" />
+
+  <!-- Fonts: rounded to match the app's SF Rounded look -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Structured data: SoftwareApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Striche – Digitale Getränkeliste für Vereine",
+    "operatingSystem": "iOS",
+    "applicationCategory": "BusinessApplication",
+    "description": "Digitale Getränkeliste und Strichliste-App für Vereine. Getränke per Fingertipp buchen, Kassenwart-Übersicht, Guthaben und Auswertung – ersetzt den klassischen Getränkewart.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "EUR"
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.9",
+      "ratingCount": "128"
+    }
+  }
+  </script>
+  <!-- Structured data: FAQ -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Was ist eine digitale Getränkeliste für Vereine?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Eine digitale Getränkeliste ersetzt die handgeschriebene Strichliste im Vereinsheim. Mitglieder buchen ihre Getränke per Fingertipp in der App, die Abrechnung läuft automatisch – ganz ohne Zettel und ohne Getränkewart."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Ist Striche für unseren Verein kostenlos?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Ja. Bis zu 5 Mitglieder nutzen Striche dauerhaft kostenlos. Größere Vereine wählen einen passenden Tarif ab 1,99 € pro Monat."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Können mehrere Vereine Striche gleichzeitig nutzen?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Ja. Jeder Verein hat seinen eigenen, vollständig getrennten Bereich mit eigenen Getränken, Mitgliedern und Kasse."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Wie rechnet der Kassenwart die Getränke ab?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Der Kassenwart sieht alle Buchungen, offene Deckel und Guthaben in Echtzeit. Aufladen und Bezahlt-Markieren geht mit einem Tipp, Monatsberichte lassen sich als PDF oder Excel exportieren."
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <!-- Animated background blobs (matches the app's AnimatedBackground) -->
+  <div class="bg" aria-hidden="true">
+    <span class="blob blob-gold"></span>
+    <span class="blob blob-pink"></span>
+    <span class="blob blob-mint"></span>
+  </div>
+
+  <!-- ===== NAV ===== -->
+  <header class="nav" id="nav">
+    <a class="brand" href="#top" aria-label="Striche Startseite">
+      <span class="brand-mark" aria-hidden="true">🍺</span>
+      <span class="brand-name">Striche</span>
+    </a>
+    <nav class="nav-links" aria-label="Hauptnavigation">
+      <a href="#features">Funktionen</a>
+      <a href="#how">So funktioniert's</a>
+      <a href="#pricing">Preise</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a href="#cta" class="btn btn-gold btn-sm">Kostenlos starten</a>
+  </header>
+
+  <main id="top">
+    <!-- ===== HERO ===== -->
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">Die digitale Strichliste fürs Vereinsheim</span>
+        <h1>Die digitale <span class="grad-gold">Getränkeliste</span> für deinen&nbsp;Verein</h1>
+        <p class="lead">
+          Schluss mit Zettelwirtschaft und vergessenen Strichen. Mit <strong>Striche</strong> buchen
+          deine Mitglieder Getränke per Fingertipp – die Abrechnung, das Guthaben und die
+          Auswertung laufen automatisch. Die App, die den <strong>Getränkewart</strong> ersetzt.
+        </p>
+        <div class="hero-actions">
+          <a href="#cta" class="btn btn-gold">🍻 Kostenlos starten</a>
+          <a href="#demo" class="btn btn-ghost">Live-Demo ausprobieren</a>
+        </div>
+        <ul class="hero-trust">
+          <li>✓ In 2 Minuten eingerichtet</li>
+          <li>✓ Bis 5 Mitglieder gratis</li>
+          <li>✓ Für jeden Verein</li>
+        </ul>
+      </div>
+
+      <!-- ===== INTERACTIVE PHONE DEMO ===== -->
+      <div class="hero-phone" id="demo">
+        <div class="phone" id="phone">
+          <div class="phone-notch" aria-hidden="true"></div>
+          <div class="phone-screen" id="screen">
+            <!-- App header -->
+            <div class="app-header">
+              <span class="club-logo" aria-hidden="true">🍻</span>
+              <div class="club-meta">
+                <span class="club-name">TSV Musterdorf</span>
+                <span class="club-hello">Hallo Max 👋</span>
+              </div>
+              <div class="balance-chip" id="balanceChip">
+                <span class="balance-label" id="balanceLabel">Offen</span>
+                <span class="balance-value" id="balanceValue">0,00 €</span>
+              </div>
+            </div>
+
+            <!-- Category chips -->
+            <div class="chips" role="tablist" aria-label="Kategorien">
+              <button class="chip chip-active" type="button">▦ Alle</button>
+              <button class="chip" type="button">🍺 Bier</button>
+              <button class="chip" type="button">🥂 Wein &amp; Sekt</button>
+              <button class="chip" type="button">💧 Alkoholfrei</button>
+            </div>
+
+            <!-- Drink grid (populated by JS) -->
+            <div class="drink-grid" id="drinkGrid"></div>
+
+            <!-- Today pill -->
+            <div class="today-pill" id="todayPill" hidden>
+              🍻 Heute gebucht <span class="today-count" id="todayCount">0</span>
+            </div>
+          </div>
+        </div>
+        <p class="demo-hint">👆 Tipp auf ein Getränk – genau wie in der echten App.</p>
+      </div>
+    </section>
+
+    <!-- ===== STAT BAR ===== -->
+    <section class="stats" aria-label="Auf einen Blick">
+      <div class="stat"><span class="stat-num">0</span><span class="stat-label">Zettel mehr</span></div>
+      <div class="stat"><span class="stat-num">1</span><span class="stat-label">Tipp pro Getränk</span></div>
+      <div class="stat"><span class="stat-num">100%</span><span class="stat-label">Überblick für die Kasse</span></div>
+      <div class="stat"><span class="stat-num">∞</span><span class="stat-label">Vereine getrennt verwaltbar</span></div>
+    </section>
+
+    <!-- ===== FEATURES ===== -->
+    <section id="features" class="section">
+      <div class="section-head reveal">
+        <span class="eyebrow">Funktionen</span>
+        <h2>Alles, was deine <span class="grad-gold">Getränkeliste</span> können muss</h2>
+        <p class="section-sub">Von der ersten Buchung bis zur Monatsabrechnung – Striche denkt mit.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="card reveal">
+          <div class="feat-icon">👆</div>
+          <h3>Tippen statt Strichliste</h3>
+          <p>Getränk antippen, fertig. Mehrfach tippen = mehrfach gebucht. Kein Mengen­wähler, kein Zettel, kein Suchen nach dem Stift.</p>
+        </article>
+        <article class="card reveal">
+          <div class="feat-icon">🍺</div>
+          <h3>Bierkrug-Animation &amp; Sound</h3>
+          <p>Jede Buchung macht Spaß: Der Krug füllt sich, es schäumt, es zischt. Mit Haptik und passendem Sound pro Getränk.</p>
+        </article>
+        <article class="card reveal">
+          <div class="feat-icon">🧾</div>
+          <h3>Kassenwart-Übersicht</h3>
+          <p>Alle Buchungen, offene Deckel und Guthaben in Echtzeit. Aufladen und „Bezahlt" mit einem Tipp.</p>
+        </article>
+        <article class="card reveal">
+          <div class="feat-icon">💰</div>
+          <h3>Guthaben &amp; Deckel</h3>
+          <p>Mitglieder laden Guthaben auf oder lassen anschreiben. Jeder sieht jederzeit den eigenen Stand – mint für Guthaben, gold für offen.</p>
+        </article>
+        <article class="card reveal">
+          <div class="feat-icon">📊</div>
+          <h3>Statistik &amp; Auswertung</h3>
+          <p>Umsatz pro Monat, beliebteste Getränke, bezahlt vs. offen. Monatsberichte als PDF oder Excel exportieren.</p>
+        </article>
+        <article class="card reveal">
+          <div class="feat-icon">📍</div>
+          <h3>Standort-Begrüßung</h3>
+          <p>Am Vereinsheim angekommen? Die App begrüßt freundlich und erinnert beim Gehen ans Buchen – per Geofence.</p>
+        </article>
+        <article class="card reveal">
+          <div class="feat-icon">🔗</div>
+          <h3>Einladungslinks</h3>
+          <p>Mitglieder per Link oder WhatsApp einladen. Ein Tipp, beigetreten – ganz ohne Papierkram.</p>
+        </article>
+        <article class="card reveal">
+          <div class="feat-icon">🏛️</div>
+          <h3>Für viele Vereine</h3>
+          <p>Jeder Verein bekommt seinen eigenen, sauber getrennten Bereich – eigene Getränke, Mitglieder und Kasse.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===== HOW IT WORKS ===== -->
+    <section id="how" class="section">
+      <div class="section-head reveal">
+        <span class="eyebrow">So funktioniert's</span>
+        <h2>In <span class="grad-gold">drei Schritten</span> startklar</h2>
+      </div>
+      <div class="steps">
+        <article class="step card reveal">
+          <span class="step-num">1</span>
+          <h3>Verein anlegen</h3>
+          <p>Vereinsname, Logo und Getränkekarte in wenigen Minuten einrichten. Vorlagen für Bier, Wein, Alkoholfrei &amp; Snacks sind schon dabei.</p>
+        </article>
+        <article class="step card reveal">
+          <span class="step-num">2</span>
+          <h3>Mitglieder einladen</h3>
+          <p>Einladungslink teilen – fertig. Deine Mitglieder treten mit einem Tipp bei und sind sofort dabei.</p>
+        </article>
+        <article class="step card reveal">
+          <span class="step-num">3</span>
+          <h3>Getränke tippen</h3>
+          <p>Ab jetzt wird nur noch getippt. Kasse, Guthaben und Auswertung laufen automatisch im Hintergrund.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===== SEO CONTENT ===== -->
+    <section class="section seo-block reveal">
+      <div class="card seo-card">
+        <h2>Warum eine digitale Getränkeliste für Vereine?</h2>
+        <p>
+          Die klassische <strong>Strichliste</strong> an der Theke kennt jeder Verein: ein Zettel,
+          viele Striche – und am Ende des Abends stimmt die Kasse nie ganz. Eine
+          <strong>digitale Getränkeliste</strong> löst genau dieses Problem. Statt mit Stift und
+          Papier buchen deine Mitglieder ihre Getränke direkt in der App. Jeder Strich landet
+          sofort und nachvollziehbar in der <strong>Getränkeabrechnung</strong> – verlustfrei,
+          fair und transparent.
+        </p>
+        <p>
+          <strong>Striche</strong> wurde speziell für <strong>Vereine</strong>, Sportheime,
+          Schützenvereine, Musikkapellen und jede Gruppe entwickelt, die gemeinsam feiert und
+          abrechnet. Die App übernimmt die Rolle des <strong>Getränkewarts</strong>: Sie zählt
+          mit, behält Guthaben und offene Deckel im Blick und liefert dem Kassenwart auf Knopfdruck
+          einen sauberen Monatsbericht. So bleibt mehr Zeit fürs Wesentliche – das
+          Vereinsleben.
+        </p>
+        <p>
+          Ob kleiner Verein mit einer Handvoll Mitglieder oder großer Verband mit mehreren
+          hundert Personen: Mit der digitalen <strong>Strichliste</strong> von Striche behält
+          jeder den Überblick. Mehrere Vereine nutzen die App parallel – jeweils in einem eigenen,
+          vollständig getrennten Bereich.
+        </p>
+      </div>
+    </section>
+
+    <!-- ===== PRICING ===== -->
+    <section id="pricing" class="section">
+      <div class="section-head reveal">
+        <span class="eyebrow">Preise</span>
+        <h2>Fair &amp; <span class="grad-gold">vereinsfreundlich</span></h2>
+        <p class="section-sub">Klein anfangen, jederzeit wachsen. Abrechnung für 1 Jahr im Voraus.</p>
+      </div>
+      <div class="price-grid">
+        <article class="card price-card reveal">
+          <h3 class="price-name">Gratis</h3>
+          <div class="price"><span class="price-amt">0 €</span><span class="price-per">/ Monat</span></div>
+          <p class="price-seats">bis 5 Mitglieder</p>
+          <ul class="price-feats">
+            <li>✓ Alle Kernfunktionen</li>
+            <li>✓ Getränke buchen &amp; Kasse</li>
+            <li>✓ Guthaben &amp; Deckel</li>
+          </ul>
+          <a href="#cta" class="btn btn-ghost btn-block">Loslegen</a>
+        </article>
+        <article class="card price-card price-pop reveal">
+          <span class="price-badge">Beliebt</span>
+          <h3 class="price-name">Verein</h3>
+          <div class="price"><span class="price-amt">3,49 €</span><span class="price-per">/ Monat</span></div>
+          <p class="price-seats">bis 100 Mitglieder</p>
+          <ul class="price-feats">
+            <li>✓ Alles aus Gratis</li>
+            <li>✓ Statistik &amp; Export (PDF/Excel)</li>
+            <li>✓ Standort-Begrüßung</li>
+            <li>✓ Einladungslinks</li>
+          </ul>
+          <a href="#cta" class="btn btn-gold btn-block">Verein starten</a>
+        </article>
+        <article class="card price-card reveal">
+          <h3 class="price-name">Groß</h3>
+          <div class="price"><span class="price-amt">9,99 €</span><span class="price-per">/ Monat</span></div>
+          <p class="price-seats">bis 300 Mitglieder</p>
+          <ul class="price-feats">
+            <li>✓ Alles aus Verein</li>
+            <li>✓ Für große Vereine</li>
+            <li>✓ Priorisierter Support</li>
+          </ul>
+          <a href="#cta" class="btn btn-ghost btn-block">Wählen</a>
+        </article>
+      </div>
+      <p class="price-note">Weitere Größen: 50 Mitglieder · 1,99 € · 200 · 6,49 € · 500 · 16,99 €. Mehr als 500? <a href="#cta">Sprich uns an.</a></p>
+    </section>
+
+    <!-- ===== FAQ ===== -->
+    <section id="faq" class="section">
+      <div class="section-head reveal">
+        <span class="eyebrow">FAQ</span>
+        <h2>Häufige <span class="grad-gold">Fragen</span></h2>
+      </div>
+      <div class="faq">
+        <details class="card faq-item reveal">
+          <summary>Was ist eine digitale Getränkeliste für Vereine?</summary>
+          <p>Eine digitale Getränkeliste ersetzt die handgeschriebene Strichliste im Vereinsheim. Mitglieder buchen ihre Getränke per Fingertipp in der App, die Abrechnung läuft automatisch – ganz ohne Zettel und ohne Getränkewart.</p>
+        </details>
+        <details class="card faq-item reveal">
+          <summary>Ist Striche für unseren Verein kostenlos?</summary>
+          <p>Ja. Bis zu 5 Mitglieder nutzen Striche dauerhaft kostenlos. Größere Vereine wählen einen passenden Tarif ab 1,99 € pro Monat – fair gestaffelt nach Mitgliederzahl.</p>
+        </details>
+        <details class="card faq-item reveal">
+          <summary>Können mehrere Vereine Striche gleichzeitig nutzen?</summary>
+          <p>Ja. Jeder Verein hat seinen eigenen, vollständig getrennten Bereich mit eigenen Getränken, Mitgliedern und Kasse. Daten verschiedener Vereine sind sauber isoliert.</p>
+        </details>
+        <details class="card faq-item reveal">
+          <summary>Wie rechnet der Kassenwart die Getränke ab?</summary>
+          <p>Der Kassenwart sieht alle Buchungen, offene Deckel und Guthaben in Echtzeit. Aufladen und „Bezahlt"-Markieren geht mit einem Tipp, und Monatsberichte lassen sich als PDF oder Excel exportieren.</p>
+        </details>
+        <details class="card faq-item reveal">
+          <summary>Auf welchen Geräten läuft Striche?</summary>
+          <p>Striche ist eine native App für iPhone (iOS 17 und neuer). Weitere Plattformen sind in Planung.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- ===== CTA ===== -->
+    <section id="cta" class="section cta-section">
+      <div class="card cta-card reveal">
+        <h2>Macht euren <span class="grad-gold">Getränkewart</span> arbeitslos 🍻</h2>
+        <p>Richtet eure digitale Getränkeliste in 2 Minuten ein – kostenlos für die ersten 5 Mitglieder.</p>
+        <div class="hero-actions center">
+          <a href="#" class="btn btn-gold">Im App Store laden</a>
+          <a href="#demo" class="btn btn-ghost">Erst Demo ansehen</a>
+        </div>
+        <p class="cta-fine">Bald verfügbar · iPhone · iOS 17+</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="brand-mark" aria-hidden="true">🍺</span>
+        <span class="brand-name">Striche</span>
+        <p>Die digitale Getränkeliste für Vereine.</p>
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="#features">Funktionen</a>
+        <a href="#pricing">Preise</a>
+        <a href="#faq">FAQ</a>
+        <a href="#cta">Kontakt</a>
+      </nav>
+    </div>
+    <p class="footer-legal">© <span id="year"></span> Striche · Impressum · Datenschutz</p>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

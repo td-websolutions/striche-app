@@ -2,6 +2,8 @@ import SwiftUI
 
 struct MemberLoginView: View {
     @EnvironmentObject var store: AppStore
+    @EnvironmentObject var backend: BackendSession
+    @EnvironmentObject var sync: SyncEngine
     @Environment(\.dismiss) private var dismiss
 
     enum Mode { case login, register }
@@ -146,20 +148,45 @@ struct MemberLoginView: View {
     }
 
     private func submit() {
-        let result: AppStore.AuthResult = (mode == .login)
-            ? store.login(email: email, password: password)
-            : store.register(email: email, password: password, name: name)
+        let isRegister = (mode == .register)
+        // Capture the invite code before local register() clears it.
+        let joinCode = store.pendingInviteCode
+        let result: AppStore.AuthResult = isRegister
+            ? store.register(email: email, password: password, name: name)
+            : store.login(email: email, password: password)
 
         switch result {
         case .success:
             Haptics.success()
             SoundManager.shared.play(.beer)
+            syncBackendAuth(isRegister: isRegister, joinCode: joinCode)
         case .notWhitelisted:
             fail("Diese E-Mail ist noch nicht freigeschaltet. Bitte gib deine E-Mail-Adresse an deinen Vereinsadministrator weiter, damit du Zugriff auf die Getränke zur Buchung erhältst. 🍺")
         case .wrongPassword:
             fail("E-Mail oder Passwort stimmen nicht. Versuch es nochmal.")
         case .alreadyRegistered:
             fail("Für diese E-Mail gibt es schon ein Konto. Wechsle zum Login.")
+        }
+    }
+
+    /// Mirror the local auth against the PocketBase backend (best-effort, offline-safe).
+    /// Obtains a token + remote user id used for the later multi-device sync. Any
+    /// failure is silent – the app keeps working locally.
+    private func syncBackendAuth(isRegister: Bool, joinCode: String?) {
+        let email = self.email
+        let password = self.password
+        let name = self.name.isEmpty ? (store.currentMember?.name ?? email) : self.name
+        let emoji = store.currentMember?.emoji ?? ""
+        Task {
+            let ok = isRegister
+                ? await backend.register(email: email, password: password, name: name, emoji: emoji)
+                : await backend.login(email: email, password: password)
+            guard ok, let uid = backend.userID else { return }
+            store.setCurrentMemberRemoteID(uid)
+            if let code = joinCode, let result = await backend.joinClub(inviteCode: code) {
+                store.setClubRemoteID(result.club)
+            }
+            await sync.sync()
         }
     }
 
