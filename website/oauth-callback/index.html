@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Anmeldung … – Striche</title>
+  <style>
+    html,body{margin:0;height:100%}
+    body{display:flex;align-items:center;justify-content:center;
+         background:#0B0D17;color:#fff;
+         font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif}
+    .c{text-align:center;padding:24px}
+    .e{font-size:48px;line-height:1}
+    .t{margin-top:14px;font-size:15px;color:rgba(255,255,255,.72)}
+    .l{margin-top:22px;font-size:13px}
+    .l a{color:#F0B429;text-decoration:none;font-weight:700}
+  </style>
+</head>
+<body>
+  <div class="c">
+    <div class="e">🍻</div>
+    <div class="t">Anmeldung wird abgeschlossen …</div>
+    <div class="l"><a id="open" href="#">Tippe hier, falls die App nicht automatisch öffnet</a></div>
+  </div>
+  <script>
+    // Forward Google's ?code=…&state=… straight into the app via its URL scheme.
+    var target = "striche://oauth" + window.location.search;
+    document.getElementById("open").setAttribute("href", target);
+    window.location.replace(target);
+  </script>
+</body>
+</html>

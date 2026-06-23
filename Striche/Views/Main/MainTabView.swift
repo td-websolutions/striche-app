@@ -16,7 +16,7 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            DrinksView()
+            DrinksView(selectedTab: $tab)
                 .tag(0)
                 .tabItem { Label("Buchen", systemImage: "mug.fill") }
 

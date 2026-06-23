@@ -340,12 +340,45 @@ final class AppStore: ObservableObject {
         pendingInviteCode = nil
     }
 
+    /// Establish a local session for a backend user authenticated via OAuth (Google).
+    /// Like `adoptRemoteJoin` but without a password hash (OAuth users have none –
+    /// they re-authenticate via the stored token). Matches by backend id, then email.
+    func adoptBackendUser(remoteUserID: String, email: String, name: String) {
+        let email = email.lowercased()
+        if let idx = data.members.firstIndex(where: { $0.remoteID == remoteUserID }) {
+            if !name.isEmpty { data.members[idx].name = name }
+            data.currentMemberID = data.members[idx].id
+        } else if let idx = data.members.firstIndex(where: { $0.email == email }) {
+            data.members[idx].remoteID = remoteUserID
+            data.currentMemberID = data.members[idx].id
+        } else {
+            var member = Member(name: name.isEmpty ? email : name, email: email,
+                                emoji: AvatarPool.random())
+            member.remoteID = remoteUserID
+            data.members.append(member)
+            data.currentMemberID = member.id
+        }
+        pendingInviteCode = nil
+    }
+
     /// Store the backend (PocketBase) user id on the current member for later sync.
     func setCurrentMemberRemoteID(_ remoteID: String) {
         guard let id = data.currentMemberID,
               let idx = data.members.firstIndex(where: { $0.id == id }) else { return }
         guard data.members[idx].remoteID != remoteID else { return }
         data.members[idx].remoteID = remoteID
+    }
+
+    /// Change the current member's e-mail locally (login identity). Only used for
+    /// local-only members without a backend account – for synced members the
+    /// backend confirm-email-change flow is authoritative and the next pull updates
+    /// the local copy.
+    func updateCurrentMemberEmail(_ newEmail: String) {
+        guard let id = data.currentMemberID,
+              let idx = data.members.firstIndex(where: { $0.id == id }) else { return }
+        let clean = newEmail.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        data.members[idx].email = clean
     }
 
     /// Store the backend ids returned by the club create/join hooks.

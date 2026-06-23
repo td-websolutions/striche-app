@@ -232,6 +232,45 @@ struct PocketBaseClient {
         _ = try await send(req, as: EmptyResponse.self)
     }
 
+    /// Ask PocketBase to send the confirm-email-change message to the NEW address.
+    /// Requires the user's auth token. The change only takes effect once the user
+    /// clicks the link in that mail. Returns 204.
+    func requestEmailChange(newEmail: String, token: String) async throws {
+        let url = baseURL.appendingPathComponent("api/collections/users/request-email-change")
+        let payload = try Self.makeEncoder().encode(["newEmail": newEmail])
+        let req = request("POST", url: url, token: token, body: payload)
+        _ = try await send(req, as: EmptyResponse.self)
+    }
+
+    // MARK: OAuth2 (Google etc.)
+
+    /// List the enabled auth methods, including configured OAuth2 providers with
+    /// their per-attempt `state`, PKCE `codeVerifier` and ready-to-open `authURL`.
+    func authMethods() async throws -> PBAuthMethods {
+        let url = baseURL.appendingPathComponent("api/collections/users/auth-methods")
+        let req = request("GET", url: url, token: nil)
+        return try await send(req, as: PBAuthMethods.self)
+    }
+
+    /// Exchange an OAuth2 authorization `code` (obtained in the browser) for a
+    /// PocketBase auth token. PocketBase performs the server-side token exchange
+    /// with Google using its stored client id/secret + the given `redirectURL`,
+    /// which MUST match the one used to obtain the code (and be registered in Google).
+    func authWithOAuth2<U: Decodable>(
+        provider: String,
+        code: String,
+        codeVerifier: String,
+        redirectURL: String,
+        returning: U.Type
+    ) async throws -> PBAuth<U> {
+        let url = baseURL.appendingPathComponent("api/collections/users/auth-with-oauth2")
+        let payload = try Self.makeEncoder().encode(
+            OAuth2ExchangeBody(provider: provider, code: code,
+                               codeVerifier: codeVerifier, redirectURL: redirectURL))
+        let req = request("POST", url: url, token: nil, body: payload)
+        return try await send(req, as: PBAuth<U>.self)
+    }
+
     // MARK: Generic CRUD
 
     func list<T: Decodable>(
@@ -312,6 +351,34 @@ struct PocketBaseClient {
 // MARK: - Helpers
 
 struct PBHealth: Decodable { let code: Int }
+
+/// Body for the `auth-with-oauth2` code exchange.
+struct OAuth2ExchangeBody: Encodable {
+    let provider: String
+    let code: String
+    let codeVerifier: String
+    let redirectURL: String
+}
+
+/// `auth-methods` response (PocketBase 0.23+ shape with the `oauth2` envelope).
+struct PBAuthMethods: Decodable {
+    let oauth2: OAuth2
+
+    struct OAuth2: Decodable {
+        let enabled: Bool?
+        let providers: [Provider]
+    }
+
+    struct Provider: Decodable {
+        let name: String           // "google"
+        let displayName: String?
+        let state: String
+        let authURL: String        // ends with "...&redirect_uri="
+        let codeVerifier: String
+        let codeChallenge: String?
+        let codeChallengeMethod: String?
+    }
+}
 
 struct EmptyResponse: Decodable { init() {} }
 

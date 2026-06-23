@@ -88,12 +88,82 @@ final class BackendSession: ObservableObject {
         await run { try await self.client.requestPasswordReset(email: email) }
     }
 
+    /// Trigger the confirm-email-change mail to `newEmail`. Requires an auth token.
+    /// The change only applies after the user clicks the link in that mail.
+    func requestEmailChange(newEmail: String) async -> Bool {
+        guard let token else { return false }
+        return await run { try await self.client.requestEmailChange(newEmail: newEmail, token: token) }
+    }
+
     func login(email: String, password: String) async -> Bool {
         await run {
             let auth = try await self.client.authWithPassword(
                 identity: email, password: password, returning: UserRecord.self)
             self.token = auth.token
             self.user = auth.record
+        }
+    }
+
+    /// Redirect used for the Google OAuth2 flow. Must be registered as an
+    /// "Authorized redirect URI" in the Google Web client and served by the
+    /// website (it bounces back to the `striche://oauth` app scheme).
+    private static let oauthRedirectURL = "https://striche-app.de/oauth-callback/"
+    private static let oauthCallbackScheme = "striche"
+
+    /// Sign in with Google via the system browser. On success the token + user
+    /// record are stored just like a password login. Returns false on cancel/error.
+    func loginWithGoogle() async -> Bool {
+        isWorking = true
+        lastError = nil
+        defer { isWorking = false }
+        do {
+            // 1) Ask PocketBase for the Google provider's authURL + PKCE material.
+            let methods = try await client.authMethods()
+            guard let google = methods.oauth2.providers.first(where: { $0.name == "google" }) else {
+                lastError = "Google-Login ist serverseitig nicht aktiviert."
+                return false
+            }
+
+            // 2) Append our redirect_uri and open the consent screen in the browser.
+            var unreserved = CharacterSet.alphanumerics
+            unreserved.insert(charactersIn: "-._~")
+            let encodedRedirect = Self.oauthRedirectURL
+                .addingPercentEncoding(withAllowedCharacters: unreserved) ?? Self.oauthRedirectURL
+            let authString = google.authURL.hasSuffix("redirect_uri=")
+                ? google.authURL + encodedRedirect
+                : google.authURL + "&redirect_uri=" + encodedRedirect
+            guard let authURL = URL(string: authString) else {
+                lastError = "Ungültige Anmelde-URL."
+                return false
+            }
+
+            let web = OAuthWebSession()
+            let callback = try await web.authenticate(
+                url: authURL, callbackScheme: Self.oauthCallbackScheme)
+
+            // 3) Pull the authorization code out of striche://oauth?code=...
+            guard let code = URLComponents(url: callback, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "code" })?.value, !code.isEmpty else {
+                lastError = OAuthWebError.noCode.errorDescription
+                return false
+            }
+
+            // 4) Exchange the code for a PocketBase session (server talks to Google).
+            let auth = try await client.authWithOAuth2(
+                provider: "google",
+                code: code,
+                codeVerifier: google.codeVerifier,
+                redirectURL: Self.oauthRedirectURL,
+                returning: UserRecord.self)
+            self.token = auth.token
+            self.user = auth.record
+            return true
+        } catch let error as OAuthWebError where error == .cancelled {
+            lastError = nil   // user backed out – not an error worth showing
+            return false
+        } catch {
+            lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
         }
     }
 

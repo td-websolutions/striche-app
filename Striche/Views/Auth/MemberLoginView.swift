@@ -66,6 +66,9 @@ struct MemberLoginView: View {
                             .padding(.top, 2)
                     }
 
+                    orDivider
+                    googleButton
+
                     Spacer(minLength: 40)
                 }
                 .padding(.horizontal, 24)
@@ -79,6 +82,40 @@ struct MemberLoginView: View {
         .animation(.smooth, value: showHint)
         .animation(.smooth, value: mode)
         .onAppear { if store.pendingInviteCode != nil { mode = .register } }
+    }
+
+    private var orDivider: some View {
+        HStack(spacing: 12) {
+            Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1)
+            Text("oder")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+            Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1)
+        }
+    }
+
+    private var googleButton: some View {
+        Button {
+            loginWithGoogle()
+        } label: {
+            HStack(spacing: 12) {
+                Text("G")
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(colors: [Color(hex: "#4285F4"), Color(hex: "#EA4335"),
+                                                Color(hex: "#FBBC05"), Color(hex: "#34A853")],
+                                       startPoint: .leading, endPoint: .trailing))
+                Text("Mit Google fortfahren")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(hex: "#1F1F1F"))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.black.opacity(0.08), lineWidth: 1))
+        }
+        .disabled(backend.isWorking)
+        .opacity(backend.isWorking ? 0.6 : 1)
     }
 
     private var inviteBanner: some View {
@@ -226,6 +263,25 @@ struct MemberLoginView: View {
             }
             // Establish the local session, then pull the club + roster + drinks.
             store.adoptRemoteJoin(remoteUserID: uid, email: email, password: password, name: name)
+            await sync.sync()
+            Haptics.success()
+            SoundManager.shared.play(.beer)
+        }
+    }
+
+    /// Sign in with Google. On success we establish the local session from the
+    /// backend user record (no password), honour a pending invite code, and sync.
+    private func loginWithGoogle() {
+        let joinCode = store.pendingInviteCode
+        Haptics.tap()
+        Task {
+            let ok = await backend.loginWithGoogle()
+            guard ok, let uid = backend.userID, let user = backend.user else {
+                if let err = backend.lastError { fail(err) }
+                return
+            }
+            if let code = joinCode { _ = await backend.joinClub(inviteCode: code) }
+            store.adoptBackendUser(remoteUserID: uid, email: user.email, name: user.name ?? "")
             await sync.sync()
             Haptics.success()
             SoundManager.shared.play(.beer)

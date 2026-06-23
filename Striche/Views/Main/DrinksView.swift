@@ -5,6 +5,9 @@ struct DrinksView: View {
     @Environment(\.openURL) private var openURL
     @StateObject private var loc = LocationManager()
 
+    /// Bound to MainTabView's selection so tapping the balance chip opens "Meine".
+    @Binding var selectedTab: Int
+
     @State private var selectedCategory: DrinkCategory? = nil
     @State private var sizeChooser: Drink?
     @State private var confettiTrigger = 0
@@ -117,19 +120,25 @@ struct DrinksView: View {
                     .foregroundStyle(Theme.textSecondary)
             }
             Spacer()
-            // Running balance chip (Guthaben or open tab)
+            // Running balance chip (Guthaben or open tab) – tap to open "Meine".
             let bal = store.currentMember.map { store.balance(for: $0) } ?? 0
-            VStack(spacing: 0) {
-                Text(bal >= 0 ? "Guthaben" : "Offen")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.bg0.opacity(0.7))
-                Text(String(format: "%.2f €", abs(bal)))
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Theme.bg0)
+            Button {
+                Haptics.tap()
+                selectedTab = 1
+            } label: {
+                VStack(spacing: 0) {
+                    Text(bal >= 0 ? "Guthaben" : "Offen")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.bg0.opacity(0.7))
+                    Text(String(format: "%.2f €", abs(bal)))
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Theme.bg0)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(bal >= 0 ? AnyShapeStyle(Theme.mintGradient) : AnyShapeStyle(Theme.goldGradient), in: Capsule())
+                .scaleEffect(totalPulse ? 1.12 : 1)
             }
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(bal >= 0 ? AnyShapeStyle(Theme.mintGradient) : AnyShapeStyle(Theme.goldGradient), in: Capsule())
-            .scaleEffect(totalPulse ? 1.12 : 1)
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 18)
         .padding(.top, 8)
