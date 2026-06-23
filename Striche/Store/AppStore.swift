@@ -55,69 +55,164 @@ final class AppStore: ObservableObject {
         try? raw.write(to: fileURL, options: .atomic)
     }
 
-    // MARK: Convenience accessors
-    var club: Club? { data.club }
-    var drinks: [Drink] { data.drinks }
-    var members: [Member] { data.members }
-    var bookings: [Booking] { data.bookings }
+    // MARK: Convenience accessors (scoped to the current club)
 
-    var currentMember: Member? {
-        guard let id = data.currentMemberID else { return nil }
-        return data.members.first { $0.id == id }
+    /// Id of the club currently shown in the booking view.
+    private var cc: UUID? { data.currentClubID }
+
+    /// The currently selected club.
+    var club: Club? { data.clubs.first { $0.id == cc } }
+
+    /// Find a local club by its backend record id (after a pull).
+    func clubByRemoteID(_ remoteID: String) -> Club? {
+        data.clubs.first { $0.remoteID == remoteID }
     }
 
-    var isLoggedIn: Bool { currentMember != nil }
+    /// All clubs the logged-in person is a member of (by identity e-mail).
+    var myClubs: [Club] {
+        guard let email = data.identityEmail else { return [] }
+        let ids = Set(data.members.filter { $0.email == email }.compactMap { $0.clubID })
+        return data.clubs.filter { ids.contains($0.id) }
+    }
+
+    var drinks: [Drink] { data.drinks.filter { $0.clubID == cc } }
+    var members: [Member] { data.members.filter { $0.clubID == cc } }
+    var bookings: [Booking] { data.bookings.filter { $0.clubID == cc } }
+
+    /// Credit transactions of the current club.
+    private var clubCreditTx: [CreditTransaction] { data.creditTx.filter { $0.clubID == cc } }
+    /// Watch links of the current club.
+    private var clubWatchLinks: [WatchLink] { data.watchLinks.filter { $0.clubID == cc } }
+
+    /// The logged-in person's member record within the current club.
+    var currentMember: Member? {
+        guard let cc else { return nil }
+        if let id = data.currentMemberID,
+           let m = data.members.first(where: { $0.id == id && $0.clubID == cc }) {
+            return m
+        }
+        if let email = data.identityEmail {
+            return data.members.first { $0.clubID == cc && $0.email == email }
+        }
+        return nil
+    }
+
+    /// A person is "logged in" once an identity is established, even before a club
+    /// is picked (RootView then routes to club selection / the no-club screen).
+    var isLoggedIn: Bool { data.identityEmail != nil }
+
+    /// If the user belongs to exactly one club and none is selected yet, enter it.
+    /// (A choice screen is only shown when several Vereine are available.)
+    func autoSelectClubIfSingle() {
+        guard data.currentClubID == nil, myClubs.count == 1, let only = myClubs.first else { return }
+        switchClub(only.id)
+    }
+
+    /// Switch the active club. Recomputes the current member within that club.
+    func switchClub(_ id: UUID) {
+        guard data.clubs.contains(where: { $0.id == id }) else { return }
+        data.currentClubID = id
+        if let email = data.identityEmail,
+           let m = data.members.first(where: { $0.clubID == id && $0.email == email }) {
+            data.currentMemberID = m.id
+        } else {
+            data.currentMemberID = nil
+        }
+    }
 
     // MARK: Onboarding
     func completeOnboarding() { data.didOnboard = true }
 
     // MARK: Club setup (admin)
+
+    /// Mutate the currently selected club in place.
+    private func mutateCurrentClub(_ change: (inout Club) -> Void) {
+        guard let cc, let idx = data.clubs.firstIndex(where: { $0.id == cc }) else { return }
+        change(&data.clubs[idx])
+    }
+
+    /// Wizard onboarding. Reuses the in-progress local club if it hasn't been
+    /// synced yet (so going back and forth in the setup doesn't spawn duplicates),
+    /// otherwise starts a fresh club and makes it current.
     func createClub(name: String, tagline: String, logo: Data?, inviteCode: String? = nil) {
-        var club = data.club ?? Club()
+        if let cc, let idx = data.clubs.firstIndex(where: { $0.id == cc }),
+           data.clubs[idx].remoteID == nil {
+            data.clubs[idx].name = name
+            data.clubs[idx].tagline = tagline
+            if let logo { data.clubs[idx].logoData = logo }
+            if let inviteCode { data.clubs[idx].inviteCode = inviteCode }
+        } else {
+            var club = Club()
+            club.name = name
+            club.tagline = tagline
+            if let logo { club.logoData = logo }
+            if let inviteCode { club.inviteCode = inviteCode }
+            data.clubs.append(club)
+            data.currentClubID = club.id
+        }
+    }
+
+    /// Create an additional club from the profile (admin spins up a second Verein).
+    /// The logged-in person becomes the admin member, the club is seeded with the
+    /// default drink catalog and made the active club.
+    @discardableResult
+    func createAdditionalClub(name: String, tagline: String = "") -> Club {
+        var club = Club()
         club.name = name
         club.tagline = tagline
-        if let logo { club.logoData = logo }
-        if let inviteCode { club.inviteCode = inviteCode }
-        data.club = club
+        data.clubs.append(club)
+        data.currentClubID = club.id
+
+        if let email = data.identityEmail {
+            let known = data.members.first { $0.email == email }
+            var me = Member(name: known?.name ?? email, email: email, isAdmin: true,
+                            emoji: known?.emoji ?? AvatarPool.random())
+            me.clubID = club.id
+            me.remoteID = known?.remoteID
+            me.passwordHash = known?.passwordHash
+            data.members.append(me)
+            data.currentMemberID = me.id
+        }
+        var seed = DrinkCatalog.presets
+        for i in seed.indices { seed[i].clubID = club.id }
+        data.drinks.append(contentsOf: seed)
+        return club
     }
 
     /// Generate a fresh invite code for the club (revokes the previous link).
     func regenerateInviteCode() {
-        guard var club = data.club else { return }
-        club.inviteCode = Club.makeInviteCode()
-        data.club = club
+        mutateCurrentClub { $0.inviteCode = Club.makeInviteCode() }
     }
 
     func setOpenInvite(_ on: Bool) {
-        guard var club = data.club else { return }
-        club.openInvite = on
-        data.club = club
+        mutateCurrentClub { $0.openInvite = on }
     }
 
     /// Email address the "Getränke leer melden" reports are sent to.
     func setGetraenkewartEmail(_ email: String?) {
-        guard var club = data.club else { return }
         let trimmed = email?.trimmingCharacters(in: .whitespacesAndNewlines)
-        club.getraenkewartEmail = (trimmed?.isEmpty == true) ? nil : trimmed
-        data.club = club
+        mutateCurrentClub { $0.getraenkewartEmail = (trimmed?.isEmpty == true) ? nil : trimmed }
     }
 
-    /// Persist a new order of the drink tiles.
+    /// Persist a new order of the drink tiles within the current club.
     func reorderDrinks(from source: IndexSet, to destination: Int) {
-        data.drinks.move(fromOffsets: source, toOffset: destination)
+        var scoped = drinks
+        scoped.move(fromOffsets: source, toOffset: destination)
+        let others = data.drinks.filter { $0.clubID != cc }
+        data.drinks = scoped + others
     }
 
     /// Shareable invite link for the club. Uses the https Universal-Link form so it
     /// also works for people who don't have the app yet (they land on the web page
     /// striche-app.de/join, which then hands off into the app or shows the App Store).
     var inviteLink: String {
-        let code = data.club?.inviteCode ?? ""
+        let code = club?.inviteCode ?? ""
         return "https://striche-app.de/join?code=\(code)"
     }
 
     /// Ready-to-send WhatsApp invite message including the link.
     var inviteMessage: String {
-        let name = data.club?.name ?? "unserem Verein"
+        let name = club?.name ?? "unserem Verein"
         return """
         🍻 Tritt \(name) auf Striche bei!
         Mit dieser App buchst du deine Getränke ganz einfach selbst.
@@ -152,13 +247,27 @@ final class AppStore: ObservableObject {
 
     /// True if the captured invite code matches the current club's open invite.
     var pendingInviteIsValid: Bool {
-        guard let code = pendingInviteCode, let club = data.club, club.openInvite else { return false }
-        return code.caseInsensitiveCompare(club.inviteCode) == .orderedSame
+        guard let code = pendingInviteCode else { return false }
+        // A captured invite code is valid if it matches ANY open-invite club we
+        // already know about locally (cross-device join is validated server-side).
+        return data.clubs.contains {
+            $0.openInvite && code.caseInsensitiveCompare($0.inviteCode) == .orderedSame
+        }
     }
 
-    func setSeedDrinks(_ drinks: [Drink]) { data.drinks = drinks }
+    /// Replace the current club's drinks with a seed set (wizard).
+    func setSeedDrinks(_ drinks: [Drink]) {
+        var seeded = drinks
+        for i in seeded.indices { seeded[i].clubID = cc }
+        let others = data.drinks.filter { $0.clubID != cc }
+        data.drinks = others + seeded
+    }
 
-    func addDrink(_ drink: Drink) { data.drinks.append(drink) }
+    func addDrink(_ drink: Drink) {
+        var d = drink
+        d.clubID = cc
+        data.drinks.append(d)
+    }
 
     func updateDrink(_ drink: Drink) {
         if let idx = data.drinks.firstIndex(where: { $0.id == drink.id }) {
@@ -169,11 +278,11 @@ final class AppStore: ObservableObject {
     func removeDrink(_ drink: Drink) { data.drinks.removeAll { $0.id == drink.id } }
 
     func updateClubLocation(lat: Double, lon: Double, radius: Double) {
-        guard var club = data.club else { return }
-        club.latitude = lat
-        club.longitude = lon
-        club.geofenceRadius = radius
-        data.club = club
+        mutateCurrentClub {
+            $0.latitude = lat
+            $0.longitude = lon
+            $0.geofenceRadius = radius
+        }
     }
 
     // MARK: Watch links (notify-on-booking with consent)
@@ -189,7 +298,9 @@ final class AppStore: ObservableObject {
             }
             return
         }
-        data.watchLinks.append(WatchLink(bookerID: me.id, watcherID: watcher.id))
+        var link = WatchLink(bookerID: me.id, watcherID: watcher.id)
+        link.clubID = cc
+        data.watchLinks.append(link)
     }
 
     /// Current member removes a watcher they previously chose.
@@ -236,9 +347,12 @@ final class AppStore: ObservableObject {
     @discardableResult
     func inviteMember(name: String, email: String, isAdmin: Bool = false) -> Member {
         let email = email.lowercased()
-        if let existing = data.members.first(where: { $0.email == email }) { return existing }
-        let m = Member(name: name.isEmpty ? email : name, email: email, isAdmin: isAdmin,
+        if let existing = data.members.first(where: { $0.clubID == cc && $0.email == email }) {
+            return existing
+        }
+        var m = Member(name: name.isEmpty ? email : name, email: email, isAdmin: isAdmin,
                        emoji: AvatarPool.random())
+        m.clubID = cc
         data.members.append(m)
         return m
     }
@@ -283,36 +397,67 @@ final class AppStore: ObservableObject {
     /// open invite link was used (auto-joins the club).
     func register(email: String, password: String, name: String) -> AuthResult {
         let email = email.lowercased()
+        // Whitelisted (pending) membership for this email in any club?
         if let idx = data.members.firstIndex(where: { $0.email == email }) {
             if data.members[idx].passwordHash != nil { return .alreadyRegistered }
-            data.members[idx].passwordHash = hash(password)
-            if !name.isEmpty { data.members[idx].name = name }
+            let pw = hash(password)
+            // Same person may sit in several clubs – set the credential on all.
+            for i in data.members.indices where data.members[i].email == email {
+                data.members[i].passwordHash = pw
+                if !name.isEmpty { data.members[i].name = name }
+            }
+            data.identityEmail = email
+            data.currentClubID = data.members[idx].clubID
             data.currentMemberID = data.members[idx].id
             return .success
         }
-        // Not whitelisted – allow join via a valid invite link.
-        guard pendingInviteIsValid else { return .notWhitelisted }
-        var member = Member(name: name.isEmpty ? email : name, email: email,
-                            emoji: AvatarPool.random())
-        member.passwordHash = hash(password)
-        data.members.append(member)
-        data.currentMemberID = member.id
-        pendingInviteCode = nil
+        // Not whitelisted but a valid local invite link is present – join that club.
+        if pendingInviteIsValid, let code = pendingInviteCode,
+           let club = data.clubs.first(where: {
+               $0.openInvite && code.caseInsensitiveCompare($0.inviteCode) == .orderedSame
+           }) {
+            var member = Member(name: name.isEmpty ? email : name, email: email,
+                                emoji: AvatarPool.random())
+            member.passwordHash = hash(password)
+            member.clubID = club.id
+            data.members.append(member)
+            data.identityEmail = email
+            data.currentClubID = club.id
+            data.currentMemberID = member.id
+            pendingInviteCode = nil
+            return .success
+        }
+        // No club yet: establish an identity-only session so RootView shows the
+        // "join a Verein" screen (NoClubView). The user can then enter an invite
+        // code, or a server-side join (via the captured code) arrives on sync.
+        data.identityEmail = email
+        data.currentClubID = nil
+        data.currentMemberID = nil
         return .success
     }
 
     func login(email: String, password: String) -> AuthResult {
         let email = email.lowercased()
-        guard let member = data.members.first(where: { $0.email == email }) else {
-            return .notWhitelisted
-        }
-        guard let stored = member.passwordHash else { return .wrongPassword }
+        let mine = data.members.filter { $0.email == email }
+        guard let first = mine.first else { return .notWhitelisted }
+        guard let stored = first.passwordHash else { return .wrongPassword }
         guard stored == hash(password) else { return .wrongPassword }
-        data.currentMemberID = member.id
+        data.identityEmail = email
+        // Keep the current club if the person still belongs to it, else pick the first.
+        if let cc, mine.contains(where: { $0.clubID == cc }) {
+            // keep current selection
+        } else {
+            data.currentClubID = first.clubID
+        }
+        data.currentMemberID = mine.first { $0.clubID == data.currentClubID }?.id
         return .success
     }
 
-    func logout() { data.currentMemberID = nil }
+    func logout() {
+        data.currentMemberID = nil
+        data.currentClubID = nil
+        data.identityEmail = nil
+    }
 
     /// Adopt a backend-validated invite join on a fresh device (no local club yet).
     /// The invite code was already verified server-side by `/api/striche/join`, so we
@@ -321,22 +466,19 @@ final class AppStore: ObservableObject {
     /// The club + roster + drinks then arrive via the subsequent pull.
     func adoptRemoteJoin(remoteUserID: String, email: String, password: String, name: String) {
         let email = email.lowercased()
-        if let idx = data.members.firstIndex(where: { $0.remoteID == remoteUserID }) {
-            data.members[idx].passwordHash = hash(password)
-            if !name.isEmpty { data.members[idx].name = name }
-            data.currentMemberID = data.members[idx].id
-        } else if let idx = data.members.firstIndex(where: { $0.email == email }) {
-            data.members[idx].remoteID = remoteUserID
-            data.members[idx].passwordHash = hash(password)
-            data.currentMemberID = data.members[idx].id
-        } else {
-            var member = Member(name: name.isEmpty ? email : name, email: email,
-                                emoji: AvatarPool.random())
-            member.remoteID = remoteUserID
-            member.passwordHash = hash(password)
-            data.members.append(member)
-            data.currentMemberID = member.id
+        let pw = hash(password)
+        for i in data.members.indices where data.members[i].email == email || data.members[i].remoteID == remoteUserID {
+            data.members[i].remoteID = remoteUserID
+            data.members[i].passwordHash = pw
+            if !name.isEmpty { data.members[i].name = name }
         }
+        if let m = data.members.first(where: { $0.remoteID == remoteUserID }) {
+            data.currentClubID = m.clubID
+            data.currentMemberID = m.id
+        }
+        // The joined club + roster + drinks arrive via the subsequent pull, which
+        // sets a current club if none is selected yet.
+        data.identityEmail = email
         pendingInviteCode = nil
     }
 
@@ -345,19 +487,17 @@ final class AppStore: ObservableObject {
     /// they re-authenticate via the stored token). Matches by backend id, then email.
     func adoptBackendUser(remoteUserID: String, email: String, name: String) {
         let email = email.lowercased()
-        if let idx = data.members.firstIndex(where: { $0.remoteID == remoteUserID }) {
-            if !name.isEmpty { data.members[idx].name = name }
-            data.currentMemberID = data.members[idx].id
-        } else if let idx = data.members.firstIndex(where: { $0.email == email }) {
-            data.members[idx].remoteID = remoteUserID
-            data.currentMemberID = data.members[idx].id
-        } else {
-            var member = Member(name: name.isEmpty ? email : name, email: email,
-                                emoji: AvatarPool.random())
-            member.remoteID = remoteUserID
-            data.members.append(member)
-            data.currentMemberID = member.id
+        for i in data.members.indices where data.members[i].email == email || data.members[i].remoteID == remoteUserID {
+            data.members[i].remoteID = remoteUserID
+            if !name.isEmpty { data.members[i].name = name }
         }
+        if let m = data.members.first(where: { $0.remoteID == remoteUserID }) {
+            data.currentClubID = m.clubID
+            data.currentMemberID = m.id
+        }
+        // No club yet -> RootView routes to the no-club screen until a pull or a
+        // server-side join associates the user with a Verein.
+        data.identityEmail = email
         pendingInviteCode = nil
     }
 
@@ -381,11 +521,35 @@ final class AppStore: ObservableObject {
         data.members[idx].email = clean
     }
 
-    /// Store the backend ids returned by the club create/join hooks.
+    /// Store the backend id on the current club (returned by the create/join hooks).
     func setClubRemoteID(_ remoteID: String) {
-        guard var club = data.club, club.remoteID != remoteID else { return }
-        club.remoteID = remoteID
-        data.club = club
+        mutateCurrentClub { if $0.remoteID != remoteID { $0.remoteID = remoteID } }
+    }
+
+    /// Store the backend id on a specific local club (used by multi-club push).
+    func setClubRemoteID(_ localID: UUID, _ remoteID: String) {
+        guard let idx = data.clubs.firstIndex(where: { $0.id == localID }),
+              data.clubs[idx].remoteID != remoteID else { return }
+        data.clubs[idx].remoteID = remoteID
+    }
+
+    /// The logged-in person's admin membership in a given club (for server-side
+    /// club creation, which requires the authenticated caller to become admin).
+    func adminMember(forClub clubID: UUID) -> Member? {
+        guard let email = data.identityEmail else { return nil }
+        return data.members.first { $0.clubID == clubID && $0.email == email && $0.isAdmin }
+    }
+
+    /// Members of a specific club (used by the multi-club sync).
+    func members(ofClub clubID: UUID) -> [Member] {
+        data.members.filter { $0.clubID == clubID }
+    }
+
+    func setMemberRemoteID(_ localID: UUID, _ remoteID: String) {
+        if let i = data.members.firstIndex(where: { $0.id == localID }),
+           data.members[i].remoteID != remoteID {
+            data.members[i].remoteID = remoteID
+        }
     }
 
     /// Persist the backend record id for a synced drink/booking/credit/watch entity.
@@ -406,37 +570,58 @@ final class AppStore: ObservableObject {
 
     func markPulled(_ date: Date) { data.sync.lastPulledAt = date }
 
-    /// Adopt/refresh the club from the backend. Keeps the local id + logo.
-    func upsertPulledClub(_ remote: Club) {
-        guard var local = data.club else { data.club = remote; return }
-        guard local.remoteID == nil || local.remoteID == remote.remoteID else { return }
-        local.name = remote.name
-        local.tagline = remote.tagline
-        local.inviteCode = remote.inviteCode
-        local.openInvite = remote.openInvite
-        local.latitude = remote.latitude
-        local.longitude = remote.longitude
-        local.geofenceRadius = remote.geofenceRadius
-        local.planID = remote.planID
-        local.pendingPlanID = remote.pendingPlanID
-        local.getraenkewartEmail = remote.getraenkewartEmail
-        local.remoteID = remote.remoteID
-        data.club = local
+    /// Adopt/refresh a club from the backend (matched by remoteID). Returns the
+    /// local club id so the pull can stamp its children. Keeps the local id + logo.
+    /// Selects the club as current if none is selected yet (fresh-device join).
+    @discardableResult
+    func upsertPulledClub(_ remote: Club) -> UUID {
+        if let i = data.clubs.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
+            data.clubs[i].name = remote.name
+            data.clubs[i].tagline = remote.tagline
+            data.clubs[i].inviteCode = remote.inviteCode
+            data.clubs[i].openInvite = remote.openInvite
+            data.clubs[i].latitude = remote.latitude
+            data.clubs[i].longitude = remote.longitude
+            data.clubs[i].geofenceRadius = remote.geofenceRadius
+            data.clubs[i].planID = remote.planID
+            data.clubs[i].pendingPlanID = remote.pendingPlanID
+            data.clubs[i].getraenkewartEmail = remote.getraenkewartEmail
+            if data.currentClubID == nil { data.currentClubID = data.clubs[i].id }
+            return data.clubs[i].id
+        }
+        // Try to adopt a still-unsynced local club created offline by this admin
+        // (keep its local id + logo, just attach the backend fields + remoteID).
+        if let i = data.clubs.firstIndex(where: { $0.remoteID == nil && $0.name == remote.name }) {
+            data.clubs[i].remoteID = remote.remoteID
+            data.clubs[i].inviteCode = remote.inviteCode
+            data.clubs[i].openInvite = remote.openInvite
+            data.clubs[i].planID = remote.planID
+            data.clubs[i].pendingPlanID = remote.pendingPlanID
+            data.clubs[i].getraenkewartEmail = remote.getraenkewartEmail
+            if data.currentClubID == nil { data.currentClubID = data.clubs[i].id }
+            return data.clubs[i].id
+        }
+        data.clubs.append(remote)
+        if data.currentClubID == nil { data.currentClubID = remote.id }
+        return remote.id
     }
 
-    func upsertPulledMember(_ remote: Member) {
-        if let i = data.members.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
+    func upsertPulledMember(_ remote: Member, clubID: UUID) {
+        if let i = data.members.firstIndex(where: {
+            $0.remoteID != nil && $0.remoteID == remote.remoteID && $0.clubID == clubID
+        }) {
             data.members[i].name = remote.name
             data.members[i].email = remote.email
             data.members[i].emoji = remote.emoji
             data.members[i].isAdmin = remote.isAdmin
         } else {
-            data.members.append(remote)
+            var m = remote; m.clubID = clubID
+            data.members.append(m)
         }
     }
 
     /// Backend owns name/price/emoji/tint/sizes/icon; local keeps category/sound/symbol.
-    func upsertPulledDrink(_ remote: Drink) {
+    func upsertPulledDrink(_ remote: Drink, clubID: UUID) {
         if let i = data.drinks.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
             data.drinks[i].name = remote.name
             data.drinks[i].emoji = remote.emoji
@@ -444,35 +629,40 @@ final class AppStore: ObservableObject {
             data.drinks[i].tintHex = remote.tintHex
             data.drinks[i].sizes = remote.sizes
             data.drinks[i].iconSymbol = remote.iconSymbol
+            data.drinks[i].clubID = clubID
         } else {
-            data.drinks.append(remote)
+            var d = remote; d.clubID = clubID
+            data.drinks.append(d)
         }
     }
 
-    func upsertPulledBooking(_ remote: Booking) {
+    func upsertPulledBooking(_ remote: Booking, clubID: UUID) {
         if let i = data.bookings.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
-            var b = remote; b.id = data.bookings[i].id
+            var b = remote; b.id = data.bookings[i].id; b.clubID = clubID
             data.bookings[i] = b
         } else {
-            data.bookings.insert(remote, at: 0)
+            var b = remote; b.clubID = clubID
+            data.bookings.insert(b, at: 0)
         }
     }
 
-    func upsertPulledCreditTx(_ remote: CreditTransaction) {
+    func upsertPulledCreditTx(_ remote: CreditTransaction, clubID: UUID) {
         if let i = data.creditTx.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
-            var t = remote; t.id = data.creditTx[i].id
+            var t = remote; t.id = data.creditTx[i].id; t.clubID = clubID
             data.creditTx[i] = t
         } else {
-            data.creditTx.append(remote)
+            var t = remote; t.clubID = clubID
+            data.creditTx.append(t)
         }
     }
 
-    func upsertPulledWatchLink(_ remote: WatchLink) {
+    func upsertPulledWatchLink(_ remote: WatchLink, clubID: UUID) {
         if let i = data.watchLinks.firstIndex(where: { $0.remoteID != nil && $0.remoteID == remote.remoteID }) {
-            var w = remote; w.id = data.watchLinks[i].id
+            var w = remote; w.id = data.watchLinks[i].id; w.clubID = clubID
             data.watchLinks[i] = w
         } else {
-            data.watchLinks.append(remote)
+            var w = remote; w.clubID = clubID
+            data.watchLinks.append(w)
         }
     }
 
@@ -495,11 +685,12 @@ final class AppStore: ObservableObject {
     func book(drink: Drink, size: DrinkSize?) {
         guard let member = currentMember else { return }
         let price = drink.price + (size?.priceModifier ?? 0)
-        let b = Booking(memberID: member.id,
+        var b = Booking(memberID: member.id,
                         drinkID: drink.id,
                         drinkName: drink.name,
                         sizeLabel: size?.label,
                         price: price)
+        b.clubID = cc
         data.bookings.insert(b, at: 0)
         reconcile(member: member)
     }
@@ -542,9 +733,11 @@ final class AppStore: ObservableObject {
     /// Admin loads credit onto a member's account (e.g. cash payment).
     func topUp(member: Member, amount: Double, note: String? = nil) {
         guard amount > 0 else { return }
-        data.creditTx.append(CreditTransaction(memberID: member.id, amount: amount,
-                                               kind: .topUp,
-                                               note: note ?? "Guthaben aufgeladen"))
+        var tx = CreditTransaction(memberID: member.id, amount: amount,
+                                   kind: .topUp,
+                                   note: note ?? "Guthaben aufgeladen")
+        tx.clubID = cc
+        data.creditTx.append(tx)
         reconcile(member: member)
     }
 
@@ -570,23 +763,25 @@ final class AppStore: ObservableObject {
         }.count
     }
 
-    /// Total amount owed across all members.
+    /// Total amount owed across all members of the current club.
     var grandTotal: Double {
-        data.members.reduce(0) { $0 + total(for: $1) }
+        members.reduce(0) { $0 + total(for: $1) }
     }
 
-    /// Total prepaid credit held across all members.
+    /// Total prepaid credit held across all members of the current club.
     var grandCredit: Double {
-        data.members.reduce(0) { $0 + credit(for: $1) }
+        members.reduce(0) { $0 + credit(for: $1) }
     }
 
     /// Settle the open tab in cash: clears the debt and marks bookings paid.
     func markPaid(member: Member) {
         let owed = total(for: member)
         if owed > 0 {
-            data.creditTx.append(CreditTransaction(memberID: member.id, amount: owed,
-                                                   kind: .settlement,
-                                                   note: "Deckel bar bezahlt"))
+            var tx = CreditTransaction(memberID: member.id, amount: owed,
+                                       kind: .settlement,
+                                       note: "Deckel bar bezahlt")
+            tx.clubID = cc
+            data.creditTx.append(tx)
         }
         reconcile(member: member)
     }
@@ -604,8 +799,8 @@ final class AppStore: ObservableObject {
     /// Years that have at least one booking or credit transaction, newest first.
     var yearsWithData: [Int] {
         let cal = Calendar.current
-        let years = Set(data.bookings.map { cal.component(.year, from: $0.date) }
-                        + data.creditTx.map { cal.component(.year, from: $0.date) })
+        let years = Set(bookings.map { cal.component(.year, from: $0.date) }
+                        + clubCreditTx.map { cal.component(.year, from: $0.date) })
         return years.sorted(by: >)
     }
 
@@ -613,7 +808,7 @@ final class AppStore: ObservableObject {
     func monthlyRevenue(year: Int) -> [Double] {
         let cal = Calendar.current
         var months = Array(repeating: 0.0, count: 12)
-        for b in data.bookings where cal.component(.year, from: b.date) == year {
+        for b in bookings where cal.component(.year, from: b.date) == year {
             months[cal.component(.month, from: b.date) - 1] += b.price
         }
         return months
@@ -623,16 +818,16 @@ final class AppStore: ObservableObject {
     func monthlyPaid(year: Int) -> [Double] {
         let cal = Calendar.current
         var months = Array(repeating: 0.0, count: 12)
-        for t in data.creditTx where cal.component(.year, from: t.date) == year {
+        for t in clubCreditTx where cal.component(.year, from: t.date) == year {
             months[cal.component(.month, from: t.date) - 1] += t.amount
         }
         return months
     }
 
-    /// All bookings within a given month/year.
+    /// All bookings of the current club within a given month/year.
     func bookings(year: Int, month: Int) -> [Booking] {
         let cal = Calendar.current
-        return data.bookings.filter {
+        return bookings.filter {
             cal.component(.year, from: $0.date) == year
                 && cal.component(.month, from: $0.date) == month
         }
@@ -660,11 +855,11 @@ final class AppStore: ObservableObject {
 
     // MARK: - Seat plan / licensing (billed by invoice)
 
-    /// Number of seats currently in use (members in the club).
-    var usedSeats: Int { data.members.count }
+    /// Number of seats currently in use (members in the current club).
+    var usedSeats: Int { members.count }
 
     /// The plan the club is licensed for right now.
-    var activePlan: SeatPlan { SeatPlans.plan(id: data.club?.planID ?? SeatPlan.freeID) }
+    var activePlan: SeatPlan { SeatPlans.plan(id: club?.planID ?? SeatPlan.freeID) }
 
     /// Smallest plan that would fit the current member count.
     var requiredPlan: SeatPlan { SeatPlans.required(forSeats: usedSeats) }
@@ -677,7 +872,7 @@ final class AppStore: ObservableObject {
 
     /// A plan that was ordered but whose invoice is still open.
     var pendingPlan: SeatPlan? {
-        guard let id = data.club?.pendingPlanID else { return nil }
+        guard let id = club?.pendingPlanID else { return nil }
         return SeatPlans.plan(id: id)
     }
 
@@ -685,21 +880,19 @@ final class AppStore: ObservableObject {
     /// is sent manually); the pending flag marks the open invoice. Enterprise
     /// only records a contact request without changing the active plan.
     func requestPlan(_ plan: SeatPlan) {
-        guard var club = data.club else { return }
-        if plan.isEnterprise {
-            club.pendingPlanID = plan.id
-        } else {
-            club.planID = plan.id
-            club.pendingPlanID = plan.isFree ? nil : plan.id
+        mutateCurrentClub {
+            if plan.isEnterprise {
+                $0.pendingPlanID = plan.id
+            } else {
+                $0.planID = plan.id
+                $0.pendingPlanID = plan.isFree ? nil : plan.id
+            }
         }
-        data.club = club
     }
 
     /// Marks the open invoice as settled (used later by the owner dashboard).
     func markPlanPaid() {
-        guard var club = data.club else { return }
-        club.pendingPlanID = nil
-        data.club = club
+        mutateCurrentClub { $0.pendingPlanID = nil }
     }
 
     // MARK: Reset (dev / settings)

@@ -210,7 +210,10 @@ struct MemberLoginView: View {
             if isRegister, let code = joinCode {
                 attemptRemoteJoin(code: code)
             } else {
-                fail("Diese E-Mail ist noch nicht freigeschaltet. Bitte gib deine E-Mail-Adresse an deinen Vereinsadministrator weiter, damit du Zugriff auf die Getränke zur Buchung erhältst. 🍺")
+                // No local member for this e-mail – try the backend (cross-device
+                // login or a previously registered no-club account). On success the
+                // identity is established and the join screen / clubs are shown.
+                attemptRemoteLogin()
             }
         case .wrongPassword:
             fail("E-Mail oder Passwort stimmen nicht. Versuch es nochmal.")
@@ -266,6 +269,25 @@ struct MemberLoginView: View {
             await sync.sync()
             Haptics.success()
             SoundManager.shared.play(.beer)
+        }
+    }
+
+    /// Login fallback when there's no local member for this e-mail: authenticate
+    /// against the backend. Establishes an identity (no local club required) and
+    /// pulls down any Vereine the user belongs to. Lands on the join screen when
+    /// the account isn't a member of any club yet.
+    private func attemptRemoteLogin() {
+        let email = self.email
+        let password = self.password
+        Task {
+            guard await backend.login(email: email, password: password),
+                  let uid = backend.userID else {
+                fail("E-Mail oder Passwort stimmen nicht – oder diese E-Mail ist noch nicht freigeschaltet. Frag deinen Vereinsadministrator nach einem Einladungslink. 🍺")
+                return
+            }
+            store.adoptBackendUser(remoteUserID: uid, email: email, name: backend.user?.name ?? "")
+            await sync.sync()
+            Haptics.success()
         }
     }
 

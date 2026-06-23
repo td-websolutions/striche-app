@@ -11,6 +11,7 @@ struct ProfileView: View {
     @State private var showAvatarEdit = false
     @State private var showGetraenkewartEmail = false
     @State private var showEmailChange = false
+    @State private var showClubs = false
 
     var member: Member? { store.currentMember }
     var isAdmin: Bool { member?.isAdmin ?? false }
@@ -23,6 +24,7 @@ struct ProfileView: View {
                     profileHeader
                     statsRow
 
+                    clubsSection
                     notificationsSection
 
                     if isAdmin {
@@ -44,6 +46,7 @@ struct ProfileView: View {
         .sheet(isPresented: $showAvatarEdit) { AvatarEditSheet() }
         .sheet(isPresented: $showGetraenkewartEmail) { GetraenkewartEmailSheet() }
         .sheet(isPresented: $showEmailChange) { ChangeEmailSheet() }
+        .sheet(isPresented: $showClubs) { MyClubsSheet() }
         .alert("Alles zurücksetzen?", isPresented: $showReset) {
             Button("Abbrechen", role: .cancel) {}
             Button("Zurücksetzen", role: .destructive) {
@@ -110,6 +113,17 @@ struct ProfileView: View {
             Text(label).font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(Theme.textSecondary)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 16).glassCard(corner: 18)
+    }
+
+    private var clubsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Meine Vereine").font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(Theme.gold)
+            row(icon: "building.2.fill",
+                title: store.club?.name ?? "Verein wählen",
+                badge: store.myClubs.count > 1 ? store.myClubs.count : 0) {
+                showClubs = true
+            }
+        }
     }
 
     private var notificationsSection: some View {

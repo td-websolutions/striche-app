@@ -18,6 +18,7 @@ struct DrinkSize: Identifiable, Codable, Hashable {
 
 struct Drink: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
+    var clubID: UUID?          // which club this drink belongs to (nil = legacy/unassigned)
     var name: String
     var emoji: String          // big tasty emoji used on the card
     var symbol: String         // SF Symbol fallback / accent
@@ -30,6 +31,7 @@ struct Drink: Identifiable, Codable, Hashable {
     var remoteID: String?      // PocketBase record id once synced (nil = local-only)
 
     init(id: UUID = UUID(),
+         clubID: UUID? = nil,
          name: String,
          emoji: String,
          symbol: String = "cup.and.saucer.fill",
@@ -40,6 +42,7 @@ struct Drink: Identifiable, Codable, Hashable {
          sound: DrinkSound = .generic,
          iconSymbol: String? = nil) {
         self.id = id
+        self.clubID = clubID
         self.name = name
         self.emoji = emoji
         self.symbol = symbol
@@ -92,6 +95,7 @@ enum DrinkSound: String, Codable {
 
 struct Member: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
+    var clubID: UUID?              // which club this membership belongs to (nil = legacy)
     var name: String
     var email: String
     var passwordHash: String?      // nil = invited but not registered yet
@@ -102,6 +106,7 @@ struct Member: Identifiable, Codable, Hashable {
     var remoteID: String?          // PocketBase user id once synced (nil = local-only / invite)
 
     init(id: UUID = UUID(),
+         clubID: UUID? = nil,
          name: String,
          email: String,
          passwordHash: String? = nil,
@@ -110,6 +115,7 @@ struct Member: Identifiable, Codable, Hashable {
          avatarData: Data? = nil,
          joined: Date = .now) {
         self.id = id
+        self.clubID = clubID
         self.name = name
         self.email = email.lowercased()
         self.passwordHash = passwordHash
@@ -129,6 +135,7 @@ struct Member: Identifiable, Codable, Hashable {
 
 struct Booking: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
+    var clubID: UUID?          // which club this booking belongs to (nil = legacy)
     var memberID: UUID
     var drinkID: UUID
     var drinkName: String
@@ -139,6 +146,7 @@ struct Booking: Identifiable, Codable, Hashable {
     var remoteID: String?      // PocketBase record id once synced (nil = local-only)
 
     init(id: UUID = UUID(),
+         clubID: UUID? = nil,
          memberID: UUID,
          drinkID: UUID,
          drinkName: String,
@@ -147,6 +155,7 @@ struct Booking: Identifiable, Codable, Hashable {
          date: Date = .now,
          paid: Bool = false) {
         self.id = id
+        self.clubID = clubID
         self.memberID = memberID
         self.drinkID = drinkID
         self.drinkName = drinkName
@@ -167,6 +176,7 @@ enum CreditKind: String, Codable {
 /// A positive credit added to a member's account by an admin.
 struct CreditTransaction: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
+    var clubID: UUID?       // which club this transaction belongs to (nil = legacy)
     var memberID: UUID
     var amount: Double      // always positive
     var kind: CreditKind
@@ -174,9 +184,10 @@ struct CreditTransaction: Identifiable, Codable, Hashable {
     var note: String?
     var remoteID: String?   // PocketBase record id once synced (nil = local-only)
 
-    init(id: UUID = UUID(), memberID: UUID, amount: Double,
+    init(id: UUID = UUID(), clubID: UUID? = nil, memberID: UUID, amount: Double,
          kind: CreditKind, date: Date = .now, note: String? = nil) {
         self.id = id
+        self.clubID = clubID
         self.memberID = memberID
         self.amount = amount
         self.kind = kind
@@ -197,15 +208,17 @@ enum WatchStatus: String, Codable {
 /// Created by the booker, but only active once the watcher accepts.
 struct WatchLink: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
+    var clubID: UUID?       // which club this watch link belongs to (nil = legacy)
     var bookerID: UUID
     var watcherID: UUID
     var status: WatchStatus
     var created: Date
     var remoteID: String?   // PocketBase record id once synced (nil = local-only)
 
-    init(id: UUID = UUID(), bookerID: UUID, watcherID: UUID,
+    init(id: UUID = UUID(), clubID: UUID? = nil, bookerID: UUID, watcherID: UUID,
          status: WatchStatus = .pending, created: Date = .now) {
         self.id = id
+        self.clubID = clubID
         self.bookerID = bookerID
         self.watcherID = watcherID
         self.status = status
@@ -337,33 +350,71 @@ enum SeatPlans {
 
 struct AppData: Codable {
     var didOnboard: Bool = false
-    var club: Club? = nil
+    var clubs: [Club] = []                 // all clubs the user belongs to / created
+    var currentClubID: UUID? = nil         // the club shown in the booking view
     var drinks: [Drink] = []
     var members: [Member] = []
     var bookings: [Booking] = []
     var watchLinks: [WatchLink] = []
     var creditTx: [CreditTransaction] = []
-    var currentMemberID: UUID? = nil
+    var currentMemberID: UUID? = nil       // member record (in current club) of the logged-in user
+    var identityEmail: String? = nil       // logged-in person's email (stable across clubs)
     var sync = SyncMeta()
 
     init() {}
 
     // Tolerant decoding so adding new fields never wipes existing saved data.
+    // Migrates the legacy single `club` field into the `clubs` array and stamps
+    // all previously-unassigned entities with that club's id.
     enum CodingKeys: String, CodingKey {
-        case didOnboard, club, drinks, members, bookings, watchLinks, creditTx, currentMemberID, sync
+        case didOnboard, club, clubs, currentClubID, drinks, members, bookings,
+             watchLinks, creditTx, currentMemberID, identityEmail, sync
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         didOnboard = try c.decodeIfPresent(Bool.self, forKey: .didOnboard) ?? false
-        club = try c.decodeIfPresent(Club.self, forKey: .club)
+        clubs = try c.decodeIfPresent([Club].self, forKey: .clubs) ?? []
+        currentClubID = try c.decodeIfPresent(UUID.self, forKey: .currentClubID)
         drinks = try c.decodeIfPresent([Drink].self, forKey: .drinks) ?? []
         members = try c.decodeIfPresent([Member].self, forKey: .members) ?? []
         bookings = try c.decodeIfPresent([Booking].self, forKey: .bookings) ?? []
         watchLinks = try c.decodeIfPresent([WatchLink].self, forKey: .watchLinks) ?? []
         creditTx = try c.decodeIfPresent([CreditTransaction].self, forKey: .creditTx) ?? []
         currentMemberID = try c.decodeIfPresent(UUID.self, forKey: .currentMemberID)
+        identityEmail = try c.decodeIfPresent(String.self, forKey: .identityEmail)
         sync = try c.decodeIfPresent(SyncMeta.self, forKey: .sync) ?? SyncMeta()
+
+        // Migrate legacy single-club data.
+        if clubs.isEmpty, let legacy = try c.decodeIfPresent(Club.self, forKey: .club) {
+            clubs = [legacy]
+            currentClubID = legacy.id
+            for i in drinks.indices where drinks[i].clubID == nil { drinks[i].clubID = legacy.id }
+            for i in members.indices where members[i].clubID == nil { members[i].clubID = legacy.id }
+            for i in bookings.indices where bookings[i].clubID == nil { bookings[i].clubID = legacy.id }
+            for i in watchLinks.indices where watchLinks[i].clubID == nil { watchLinks[i].clubID = legacy.id }
+            for i in creditTx.indices where creditTx[i].clubID == nil { creditTx[i].clubID = legacy.id }
+            if identityEmail == nil, let cid = currentMemberID,
+               let m = members.first(where: { $0.id == cid }) {
+                identityEmail = m.email
+            }
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(didOnboard, forKey: .didOnboard)
+        try c.encode(clubs, forKey: .clubs)
+        try c.encodeIfPresent(currentClubID, forKey: .currentClubID)
+        try c.encode(drinks, forKey: .drinks)
+        try c.encode(members, forKey: .members)
+        try c.encode(bookings, forKey: .bookings)
+        try c.encode(watchLinks, forKey: .watchLinks)
+        try c.encode(creditTx, forKey: .creditTx)
+        try c.encodeIfPresent(currentMemberID, forKey: .currentMemberID)
+        try c.encodeIfPresent(identityEmail, forKey: .identityEmail)
+        try c.encode(sync, forKey: .sync)
+        // Legacy `club` key is intentionally not written – migrated into `clubs`.
     }
 }
 

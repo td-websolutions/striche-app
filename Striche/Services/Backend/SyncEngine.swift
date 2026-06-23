@@ -54,31 +54,37 @@ final class SyncEngine: ObservableObject {
     // MARK: - Push
 
     private func push(token: String) async throws {
-        guard let club = store.data.club, let me = store.currentMember else { return }
+        // Push every club the user has locally (admin-owned clubs get created
+        // remotely; clubs the user only belongs to are kept fresh if synced).
+        for club in store.data.clubs {
+            try await pushClub(club, token: token)
+        }
+    }
 
+    private func pushClub(_ club: Club, token: String) async throws {
         // 1) Ensure the club exists remotely.
         let clubRID: String
         if let rid = club.remoteID {
-            // Keep the remote club fields fresh.
             _ = try await client.update("clubs", id: rid, body: clubWrite(club),
                                         token: token, returning: ClubRecord.self)
             clubRID = rid
-        } else if me.isAdmin {
+        } else if let admin = store.adminMember(forClub: club.id) {
             // Admin set up offline – create the club (+ admin membership) via the hook.
             guard let result = await backend.createClub(
                 name: club.name, tagline: club.tagline, inviteCode: club.inviteCode,
                 openInvite: club.openInvite, planID: club.planID,
                 getraenkewartEmail: club.getraenkewartEmail) else { return }
-            store.setClubRemoteID(result.club)
-            if let uid = backend.userID { store.setCurrentMemberRemoteID(uid) }
+            store.setClubRemoteID(club.id, result.club)
+            if let uid = backend.userID { store.setMemberRemoteID(admin.id, uid) }
             clubRID = result.club
         } else {
-            // Non-admin without a synced club yet: nothing to push.
+            // Not admin / club not synced yet: nothing to push for this club.
             return
         }
 
-        // 2) Drinks (snapshot to avoid mutating while iterating).
-        for (index, drink) in store.data.drinks.enumerated() {
+        // 2) Drinks of this club.
+        let clubDrinks = store.data.drinks.filter { $0.clubID == club.id }
+        for (index, drink) in clubDrinks.enumerated() {
             let body = drink.toWrite(clubID: clubRID, sortOrder: index)
             if let rid = drink.remoteID {
                 _ = try await client.update("drinks", id: rid, body: body,
@@ -90,14 +96,14 @@ final class SyncEngine: ObservableObject {
             }
         }
 
-        // Build local UUID -> remote id lookups (members + freshly-synced drinks).
+        // Local UUID -> remote id lookups, scoped to this club.
         let memberRemote = Dictionary(uniqueKeysWithValues:
-            store.data.members.compactMap { m in m.remoteID.map { (m.id, $0) } })
+            store.members(ofClub: club.id).compactMap { m in m.remoteID.map { (m.id, $0) } })
         let drinkRemote = Dictionary(uniqueKeysWithValues:
-            store.data.drinks.compactMap { d in d.remoteID.map { (d.id, $0) } })
+            clubDrinks.compactMap { d in d.remoteID.map { (d.id, $0) } })
 
         // 3) Bookings – only for members that already have a backend user id.
-        for booking in store.data.bookings {
+        for booking in store.data.bookings where booking.clubID == club.id {
             guard let memberRID = memberRemote[booking.memberID] else { continue }
             let body = BookingWrite(
                 club: clubRID, member: memberRID, drink: drinkRemote[booking.drinkID],
@@ -114,7 +120,7 @@ final class SyncEngine: ObservableObject {
         }
 
         // 4) Credit transactions.
-        for tx in store.data.creditTx {
+        for tx in store.data.creditTx where tx.clubID == club.id {
             guard let memberRID = memberRemote[tx.memberID] else { continue }
             let body = CreditTxWrite(
                 club: clubRID, member: memberRID, amount: tx.amount,
@@ -130,7 +136,7 @@ final class SyncEngine: ObservableObject {
         }
 
         // 5) Watch links – need both booker and watcher synced.
-        for link in store.data.watchLinks {
+        for link in store.data.watchLinks where link.clubID == club.id {
             guard let bookerRID = memberRemote[link.bookerID],
                   let watcherRID = memberRemote[link.watcherID] else { continue }
             let body = WatchLinkWrite(
@@ -156,15 +162,20 @@ final class SyncEngine: ObservableObject {
     // remoteID) bleiben unangetastet und werden beim nächsten Push hochgeladen.
 
     private func pull(token: String) async throws {
-        // 1) Club (scoped rule liefert nur die Vereine des Users).
-        let clubs: PBList<ClubRecord> = try await client.list("clubs", token: token, perPage: 1)
-        guard let rc = clubs.items.first else { return }
-        let clubRID = rc.id
-        store.upsertPulledClub(clubFromRecord(rc))
+        // The scoped rule returns every Verein the user belongs to.
+        let clubs: PBList<ClubRecord> = try await client.list("clubs", token: token, perPage: 200)
+        for rc in clubs.items {
+            try await pullClub(rc, token: token)
+        }
+        store.markPulled(Date())
+    }
 
+    private func pullClub(_ rc: ClubRecord, token: String) async throws {
+        let clubRID = rc.id
+        let localClubID = store.upsertPulledClub(clubFromRecord(rc))
         let filter = "club=\"\(clubRID)\""
 
-        // 2) Members via memberships (expand user).
+        // Members via memberships (expand user), stamped with the local club id.
         let memberships: PBList<MembershipExpand> = try await client.list(
             "memberships", token: token, filter: filter, expand: "user", perPage: 500)
         for m in memberships.items {
@@ -173,23 +184,26 @@ final class SyncEngine: ObservableObject {
                                 email: u.email, isAdmin: m.role == "admin",
                                 emoji: (u.emoji?.isEmpty == false ? u.emoji! : "🧑"))
             member.remoteID = u.id
-            store.upsertPulledMember(member)
+            store.upsertPulledMember(member, clubID: localClubID)
         }
+        // Lookups scoped to THIS club (a remote user maps to one member per club).
+        let clubMembers = store.members(ofClub: localClubID)
         let memberByRemote = Dictionary(uniqueKeysWithValues:
-            store.data.members.compactMap { mb in mb.remoteID.map { ($0, mb.id) } })
+            clubMembers.compactMap { mb in mb.remoteID.map { ($0, mb.id) } })
 
-        // 3) Drinks.
+        // Drinks.
         let drinks: PBList<DrinkRecord> = try await client.list(
             "drinks", token: token, filter: filter, sort: "sort_order", perPage: 500)
         for d in drinks.items {
             var local = d.toLocalDrink()
             local.remoteID = d.id
-            store.upsertPulledDrink(local)
+            store.upsertPulledDrink(local, clubID: localClubID)
         }
         let drinkByRemote = Dictionary(uniqueKeysWithValues:
-            store.data.drinks.compactMap { dr in dr.remoteID.map { ($0, dr.id) } })
+            store.data.drinks.filter { $0.clubID == localClubID }
+                .compactMap { dr in dr.remoteID.map { ($0, dr.id) } })
 
-        // 4) Bookings.
+        // Bookings.
         let bookings: PBList<BookingRecord> = try await client.list(
             "bookings", token: token, filter: filter, sort: "-date", perPage: 500)
         for b in bookings.items {
@@ -203,10 +217,10 @@ final class SyncEngine: ObservableObject {
                 date: b.date ?? .now,
                 paid: b.paid ?? false)
             local.remoteID = b.id
-            store.upsertPulledBooking(local)
+            store.upsertPulledBooking(local, clubID: localClubID)
         }
 
-        // 5) Credit transactions.
+        // Credit transactions.
         let txs: PBList<CreditTxRecord> = try await client.list(
             "credit_transactions", token: token, filter: filter, perPage: 500)
         for t in txs.items {
@@ -216,10 +230,10 @@ final class SyncEngine: ObservableObject {
                 memberID: memberID, amount: t.amount ?? 0, kind: kind,
                 date: t.date ?? .now, note: t.note)
             local.remoteID = t.id
-            store.upsertPulledCreditTx(local)
+            store.upsertPulledCreditTx(local, clubID: localClubID)
         }
 
-        // 6) Watch links.
+        // Watch links.
         let links: PBList<WatchLinkRecord> = try await client.list(
             "watch_links", token: token, filter: filter, perPage: 500)
         for w in links.items {
@@ -229,10 +243,8 @@ final class SyncEngine: ObservableObject {
                 bookerID: booker, watcherID: watcher,
                 status: WatchStatus(backend: w.status), created: w.created ?? .now)
             local.remoteID = w.id
-            store.upsertPulledWatchLink(local)
+            store.upsertPulledWatchLink(local, clubID: localClubID)
         }
-
-        store.markPulled(Date())
     }
 
     private func clubFromRecord(_ r: ClubRecord) -> Club {
